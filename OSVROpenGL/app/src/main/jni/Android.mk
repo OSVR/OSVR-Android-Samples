@@ -48,9 +48,12 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE    := native-activity
 LOCAL_SRC_FILES := main.cpp
+LOCAL_CFLAGS    := -I${OSVR_ANDROID}\include
 LOCAL_LDLIBS    := -llog -landroid -lEGL -lGLESv1_CM
-LOCAL_STATIC_LIBRARIES := android_native_app_glue
+LOCAL_STATIC_LIBRARIES := android_native_app_glue boost_serialization_static
 LOCAL_SHARED_LIBRARIES := osvrClient osvrClientKit osvrCommon osvrUtil usb1.0 gnustl_shared jsoncpp
 include $(BUILD_SHARED_LIBRARY)
+
+$(call import-module,boost/1.57.0)
 
 $(call import-module,android/native_app_glue)

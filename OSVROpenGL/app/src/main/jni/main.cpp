@@ -19,12 +19,19 @@
 #include <jni.h>
 #include <errno.h>
 
+#include <iostream>
+#include <sstream>
 #include <EGL/egl.h>
 #include <GLES/gl.h>
 
 #include <android/sensor.h>
 #include <android/log.h>
 #include <android_native_app_glue.h>
+
+#include <osvr/ClientKit/Context.h>
+#include <osvr/ClientKit/Interface.h>
+#include <osvr/ClientKit/InterfaceStateC.h>
+#include <osvr/ClientKit/Display.h>
 
 #define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "native-activity", __VA_ARGS__))
 #define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "native-activity", __VA_ARGS__))
@@ -44,9 +51,9 @@ struct saved_state {
 struct engine {
     struct android_app* app;
 
-    ASensorManager* sensorManager;
-    const ASensor* accelerometerSensor;
-    ASensorEventQueue* sensorEventQueue;
+//    ASensorManager* sensorManager;
+//    const ASensor* accelerometerSensor;
+//    ASensorEventQueue* sensorEventQueue;
 
     int animating;
     EGLDisplay display;
@@ -55,6 +62,7 @@ struct engine {
     int32_t width;
     int32_t height;
     struct saved_state state;
+    osvr::clientkit::DisplayConfig* disp;
 };
 
 /**
@@ -125,6 +133,88 @@ static int engine_init_display(struct engine* engine) {
     return 0;
 }
 
+/// @brief Fixed-function pipeline OpenGL code to draw a cube
+static void draw_cube(double radius) {
+    static const GLfloat matspec[4] = {0.5, 0.5, 0.5, 0.0};
+    static const float red_col[] = {1.0, 0.0, 0.0};
+    static const float grn_col[] = {0.0, 1.0, 0.0};
+    static const float blu_col[] = {0.0, 0.0, 1.0};
+    static const float yel_col[] = {1.0, 1.0, 0.0};
+    static const float lightblu_col[] = {0.0, 1.0, 1.0};
+    static const float pur_col[] = {1.0, 0.0, 1.0};
+    glPushMatrix();
+    glScaled(radius, radius, radius);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, matspec);
+    glMaterialf(GL_FRONT, GL_SHININESS, 64.0);
+    glBegin(GL_POLYGON);
+    glColor3fv(lightblu_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, lightblu_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, lightblu_col);
+    glNormal3f(0.0, 0.0, -1.0);
+    glVertex3f(1.0, 1.0, -1.0);
+    glVertex3f(1.0, -1.0, -1.0);
+    glVertex3f(-1.0, -1.0, -1.0);
+    glVertex3f(-1.0, 1.0, -1.0);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glColor3fv(blu_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, blu_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, blu_col);
+    glNormal3f(0.0, 0.0, 1.0);
+    glVertex3f(-1.0, 1.0, 1.0);
+    glVertex3f(-1.0, -1.0, 1.0);
+    glVertex3f(1.0, -1.0, 1.0);
+    glVertex3f(1.0, 1.0, 1.0);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glColor3fv(yel_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, yel_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, yel_col);
+    glNormal3f(0.0, -1.0, 0.0);
+    glVertex3f(1.0, -1.0, 1.0);
+    glVertex3f(-1.0, -1.0, 1.0);
+    glVertex3f(-1.0, -1.0, -1.0);
+    glVertex3f(1.0, -1.0, -1.0);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glColor3fv(grn_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, grn_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, grn_col);
+    glNormal3f(0.0, 1.0, 0.0);
+    glVertex3f(1.0, 1.0, 1.0);
+    glVertex3f(1.0, 1.0, -1.0);
+    glVertex3f(-1.0, 1.0, -1.0);
+    glVertex3f(-1.0, 1.0, 1.0);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glColor3fv(pur_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, pur_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, pur_col);
+    glNormal3f(-1.0, 0.0, 0.0);
+    glVertex3f(-1.0, 1.0, 1.0);
+    glVertex3f(-1.0, 1.0, -1.0);
+    glVertex3f(-1.0, -1.0, -1.0);
+    glVertex3f(-1.0, -1.0, 1.0);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glColor3fv(red_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, red_col);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, red_col);
+    glNormal3f(1.0, 0.0, 0.0);
+    glVertex3f(1.0, -1.0, 1.0);
+    glVertex3f(1.0, -1.0, -1.0);
+    glVertex3f(1.0, 1.0, -1.0);
+    glVertex3f(1.0, 1.0, 1.0);
+    glEnd();
+    glPopMatrix();
+}
+
+/// @brief A simple dummy "draw" function - note that drawing occurs in "room
+/// space" by default. (that is, in this example, the modelview matrix when this
+/// function is called is initialized such that it transforms from world space
+/// to view space)
+static void renderScene() { draw_cube(1.0); }
+
 /**
  * Just the current frame in the display.
  */
@@ -134,10 +224,54 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    // Just fill the screen with a color.
-    glClearColor(((float)engine->state.x)/engine->width, engine->state.angle,
-            ((float)engine->state.y)/engine->height, 1);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(0, 0, 0, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    if(engine->disp != NULL) {
+        engine->disp->forEachEye([](osvr::clientkit::Eye eye) {
+
+            /// Try retrieving the view matrix (based on eye pose) from OSVR
+            double viewMat[OSVR_MATRIX_SIZE];
+            eye.getViewMatrix(OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS,
+                              viewMat);
+            /// Initialize the ModelView transform with the view matrix we
+            /// received
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+            glMultMatrixd(viewMat);
+
+            /// For each display surface seen by the given eye of the given
+            /// viewer...
+            eye.forEachSurface([](osvr::clientkit::Surface surface) {
+                auto viewport = surface.getRelativeViewport();
+                glViewport(static_cast<GLint>(viewport.left),
+                           static_cast<GLint>(viewport.bottom),
+                           static_cast<GLsizei>(viewport.width),
+                           static_cast<GLsizei>(viewport.height));
+
+                /// Set the OpenGL projection matrix based on the one we
+                /// computed.
+                double zNear = 0.1;
+                double zFar = 100;
+                double projMat[OSVR_MATRIX_SIZE];
+                surface.getProjectionMatrix(
+                        zNear, zFar, OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS |
+                                     OSVR_MATRIX_SIGNEDZ | OSVR_MATRIX_RHINPUT,
+                        projMat);
+
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glMultMatrixd(projMat);
+
+                /// Set the matrix mode to ModelView, so render code doesn't
+                /// mess with the projection matrix on accident.
+                glMatrixMode(GL_MODELVIEW);
+
+                /// Call out to render our scene.
+                renderScene();
+            });
+        });
+    }
 
     eglSwapBuffers(engine->display, engine->surface);
 }
@@ -201,21 +335,21 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
             break;
         case APP_CMD_GAINED_FOCUS:
             // When our app gains focus, we start monitoring the accelerometer.
-            if (engine->accelerometerSensor != NULL) {
-                ASensorEventQueue_enableSensor(engine->sensorEventQueue,
-                        engine->accelerometerSensor);
-                // We'd like to get 60 events per second (in us).
-                ASensorEventQueue_setEventRate(engine->sensorEventQueue,
-                        engine->accelerometerSensor, (1000L/60)*1000);
-            }
+//            if (engine->accelerometerSensor != NULL) {
+//                ASensorEventQueue_enableSensor(engine->sensorEventQueue,
+//                        engine->accelerometerSensor);
+//                // We'd like to get 60 events per second (in us).
+//                ASensorEventQueue_setEventRate(engine->sensorEventQueue,
+//                        engine->accelerometerSensor, (1000L/60)*1000);
+//            }
             break;
         case APP_CMD_LOST_FOCUS:
             // When our app loses focus, we stop monitoring the accelerometer.
             // This is to avoid consuming battery while not being used.
-            if (engine->accelerometerSensor != NULL) {
-                ASensorEventQueue_disableSensor(engine->sensorEventQueue,
-                        engine->accelerometerSensor);
-            }
+//            if (engine->accelerometerSensor != NULL) {
+//                ASensorEventQueue_disableSensor(engine->sensorEventQueue,
+//                        engine->accelerometerSensor);
+//            }
             // Also stop animating.
             engine->animating = 0;
             engine_draw_frame(engine);
@@ -231,6 +365,25 @@ extern "C" {
      */
     void android_main(struct android_app *state) {
         struct engine engine;
+        osvr::clientkit::ClientContext context(
+                "com.osvr.exampleclients.TrackerState");
+
+        osvr::clientkit::DisplayConfig display(context);
+        if(!display.valid()) {
+            LOGI("[OSVR] Could not get a display config (server probably not "
+                "running or not behaving), exiting");
+            return;
+        }
+
+        LOGI("[OSVR] Waiting for the display to fully start up, including "
+            "receiving initial pose update...");
+        while(!display.checkStartup()) {
+            ctx.update();
+        }
+
+        engine.disp = &display;
+
+        LOGI("[OSVR] OK, display startup status is good!");
 
         // Make sure glue isn't stripped.
         app_dummy();
@@ -240,14 +393,15 @@ extern "C" {
         state->onAppCmd = engine_handle_cmd;
         state->onInputEvent = engine_handle_input;
         engine.app = state;
+        engine.animating = true;
 
         // Prepare to monitor accelerometer
-        engine.sensorManager = ASensorManager_getInstance();
-        engine.accelerometerSensor = ASensorManager_getDefaultSensor(engine.sensorManager,
-                                                                     ASENSOR_TYPE_ACCELEROMETER);
-        engine.sensorEventQueue = ASensorManager_createEventQueue(engine.sensorManager,
-                                                                  state->looper, LOOPER_ID_USER, NULL,
-                                                                  NULL);
+//        engine.sensorManager = ASensorManager_getInstance();
+//        engine.accelerometerSensor = ASensorManager_getDefaultSensor(engine.sensorManager,
+//                                                                     ASENSOR_TYPE_ACCELEROMETER);
+//        engine.sensorEventQueue = ASensorManager_createEventQueue(engine.sensorManager,
+//                                                                  state->looper, LOOPER_ID_USER, NULL,
+//                                                                  NULL);
 
         if (state->savedState != NULL) {
             // We are starting with a previous saved state; restore from it.
@@ -255,8 +409,11 @@ extern "C" {
         }
 
         // loop waiting for stuff to do.
-
+        unsigned int i = 0;
+        std::stringstream ss;
         while (1) {
+            context.update();
+
             // Read all pending events.
             int ident;
             int events;
@@ -274,17 +431,17 @@ extern "C" {
                 }
 
                 // If a sensor has data, process it now.
-                if (ident == LOOPER_ID_USER) {
-                    if (engine.accelerometerSensor != NULL) {
-                        ASensorEvent event;
-                        while (ASensorEventQueue_getEvents(engine.sensorEventQueue,
-                                                           &event, 1) > 0) {
-                            LOGI("accelerometer: x=%f y=%f z=%f",
-                                 event.acceleration.x, event.acceleration.y,
-                                 event.acceleration.z);
-                        }
-                    }
-                }
+//                if (ident == LOOPER_ID_USER) {
+//                    if (engine.accelerometerSensor != NULL) {
+//                        ASensorEvent event;
+//                        while (ASensorEventQueue_getEvents(engine.sensorEventQueue,
+//                                                           &event, 1) > 0) {
+//                            LOGI("accelerometer: x=%f y=%f z=%f",
+//                                 event.acceleration.x, event.acceleration.y,
+//                                 event.acceleration.z);
+//                        }
+//                    }
+//                }
 
                 // Check if we are exiting.
                 if (state->destroyRequested != 0) {
