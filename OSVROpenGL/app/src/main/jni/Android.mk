@@ -40,13 +40,17 @@ LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libosvrUtil.so
 include $(PREBUILT_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE := jsoncpp
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libjsoncpp.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
 
 LOCAL_MODULE    := native-activity
 LOCAL_SRC_FILES := main.c
 LOCAL_LDLIBS    := -llog -landroid -lEGL -lGLESv1_CM
 LOCAL_STATIC_LIBRARIES := android_native_app_glue
-LOCAL_SHARED_LIBRARIES := osvrClient osvrClientKit osvrCommon osvrUtil usb1.0
-APP_STL := gnustl_shared
+LOCAL_SHARED_LIBRARIES := osvrClient osvrClientKit osvrCommon osvrUtil usb1.0 gnustl_shared jsoncpp
 include $(BUILD_SHARED_LIBRARY)
 
 $(call import-module,android/native_app_glue)

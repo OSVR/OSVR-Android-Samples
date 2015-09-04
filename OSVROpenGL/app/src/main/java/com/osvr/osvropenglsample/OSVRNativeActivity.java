@@ -5,8 +5,9 @@ package com.osvr.osvropenglsample;
  */
 public class OSVRNativeActivity extends android.app.NativeActivity {
     static {
-        //System.loadLibrary("gnustl_shared");
+        System.loadLibrary("gnustl_shared");
         System.loadLibrary("crystax");
+        System.loadLibrary("jsoncpp");
         System.loadLibrary("usb1.0");
         System.loadLibrary("osvrUtil");
         System.loadLibrary("osvrCommon");
