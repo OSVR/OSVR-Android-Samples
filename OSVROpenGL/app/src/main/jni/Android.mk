@@ -49,7 +49,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE    := native-activity
 LOCAL_SRC_FILES := main.cpp
 LOCAL_CFLAGS    := -I${OSVR_ANDROID}\include
-LOCAL_LDLIBS    := -llog -landroid -lEGL -lGLESv1_CM
+LOCAL_LDLIBS    := -llog -landroid -lEGL -lGLESv2
 LOCAL_STATIC_LIBRARIES := android_native_app_glue boost_serialization_static
 LOCAL_SHARED_LIBRARIES := osvrClient osvrClientKit osvrCommon osvrUtil usb1.0 gnustl_shared jsoncpp
 include $(BUILD_SHARED_LIBRARY)
