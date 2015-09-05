@@ -17,111 +17,49 @@
 
 //BEGIN_INCLUDE(all)
 #include <jni.h>
-#include <errno.h>
+#include <android/log.h>
 
 #include <iostream>
 #include <sstream>
 
-#include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
-
-#include <android/sensor.h>
-#include <android/log.h>
-#include <android_native_app_glue.h>
 
 #include <osvr/ClientKit/Context.h>
 #include <osvr/ClientKit/Interface.h>
 #include <osvr/ClientKit/InterfaceStateC.h>
 #include <osvr/ClientKit/Display.h>
 
-#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "native-activity", __VA_ARGS__))
-#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "native-activity", __VA_ARGS__))
+#define  LOG_TAG    "libgl2jni"
+#define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
+#define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
 
-PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES = (PFNGLGENVERTEXARRAYSOESPROC)eglGetProcAddress ( "glGenVertexArraysOES" );
-PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = (PFNGLBINDVERTEXARRAYOESPROC)eglGetProcAddress ( "glBindVertexArrayOES" );
-PFNGLDELETEVERTEXARRAYSOESPROC glDeleteVertexArraysOES = (PFNGLDELETEVERTEXARRAYSOESPROC)eglGetProcAddress ( "glDeleteVertexArraysOES" );
-
-/**
- * Shared state for our app.
- */
-struct engine {
-    struct android_app* app;
-
-    EGLDisplay display;
-    EGLSurface surface;
-    EGLContext context;
-    int32_t width;
-    int32_t height;
-};
-
-/**
- * Initialize an EGL context for the current display.
- */
-static int engine_init_display(struct engine* engine) {
-    // initialize OpenGL ES and EGL
-
-    /*
-     * Here specify the attributes of the desired configuration.
-     * Below, we select an EGLConfig with at least 8 bits per color
-     * component compatible with on-screen windows
-     */
-    const EGLint attribs[] = {
-            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-            EGL_BLUE_SIZE, 8,
-            EGL_GREEN_SIZE, 8,
-            EGL_RED_SIZE, 8,
-            EGL_NONE
-    };
-    EGLint w, h, dummy, format;
-    EGLint numConfigs;
-    EGLConfig config;
-    EGLSurface surface;
-    EGLContext context;
-
-    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-
-    eglInitialize(display, 0, 0);
-
-    /* Here, the application chooses the configuration it desires. In this
-     * sample, we have a very simplified selection process, where we pick
-     * the first EGLConfig that matches our criteria */
-    eglChooseConfig(display, attribs, &config, 1, &numConfigs);
-
-    /* EGL_NATIVE_VISUAL_ID is an attribute of the EGLConfig that is
-     * guaranteed to be accepted by ANativeWindow_setBuffersGeometry().
-     * As soon as we picked a EGLConfig, we can safely reconfigure the
-     * ANativeWindow buffers to match, using EGL_NATIVE_VISUAL_ID. */
-    eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format);
-
-    ANativeWindow_setBuffersGeometry(engine->app->window, 0, 0, format);
-
-    surface = eglCreateWindowSurface(display, config, engine->app->window, NULL);
-    context = eglCreateContext(display, config, NULL, NULL);
-
-    if (eglMakeCurrent(display, surface, surface, context) == EGL_FALSE) {
-        LOGW("Unable to eglMakeCurrent");
-        return -1;
-    }
-
-    eglQuerySurface(display, surface, EGL_WIDTH, &w);
-    eglQuerySurface(display, surface, EGL_HEIGHT, &h);
-
-    engine->display = display;
-    engine->context = context;
-    engine->surface = surface;
-    engine->width = w;
-    engine->height = h;
-
-    // Initialize GL state.
-//    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST);
-    glEnable(GL_CULL_FACE);
-//    glShadeModel(GL_SMOOTH);
-    glDisable(GL_DEPTH_TEST);
-
-    return 0;
+static void printGLString(const char *name, GLenum s) {
+    const char *v = (const char *) glGetString(s);
+    LOGI("GL %s = %s\n", name, v);
 }
+
+static void checkGlError(const char* op) {
+    for (GLint error = glGetError(); error; error
+                                                    = glGetError()) {
+        LOGI("after %s() glError (0x%x)\n", op, error);
+    }
+}
+
+static const char gVertexShader[] =
+        "attribute vec4 vPosition;\n"
+                "uniform mat4 model;\n"
+                "uniform mat4 view;\n"
+                "uniform mat4 projection;\n"
+                "void main() {\n"
+                "  gl_Position = projection * view * model * vPosition;\n"
+                "}\n";
+
+static const char gFragmentShader[] =
+        "precision mediump float;\n"
+                "void main() {\n"
+                "  gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0);\n"
+                "}\n";
 
 // normally you'd load the shaders from a file, but in this case, let's
 // just keep things simple and load from memory.
@@ -145,455 +83,505 @@ static const GLchar* fragmentShader =
                 "    gl_FragColor = fragmentColor;\n"
                 "}\n";
 
-class SampleShader {
-public:
-    SampleShader() { }
-
-    ~SampleShader() {
-        if (initialized) {
-            glDeleteProgram(programId);
+GLuint loadShader(GLenum shaderType, const char* pSource) {
+    GLuint shader = glCreateShader(shaderType);
+    if (shader) {
+        glShaderSource(shader, 1, &pSource, NULL);
+        glCompileShader(shader);
+        GLint compiled = 0;
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+        if (!compiled) {
+            GLint infoLen = 0;
+            glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
+            if (infoLen) {
+                char* buf = (char*) malloc(infoLen);
+                if (buf) {
+                    glGetShaderInfoLog(shader, infoLen, NULL, buf);
+                    LOGE("Could not compile shader %d:\n%s\n",
+                         shaderType, buf);
+                    free(buf);
+                }
+                glDeleteShader(shader);
+                shader = 0;
+            }
         }
     }
+    return shader;
+}
 
-    void init() {
-        if (!initialized) {
-            LOGI("[OSVR] Initializing sample shader.");
-            GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
-            GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
-
-            // vertex shader
-            glShaderSource(vertexShaderId, 1, &vertexShader, NULL);
-            glCompileShader(vertexShaderId);
-            checkShaderError(vertexShaderId, "Vertex shader compilation failed.");
-
-            // fragment shader
-            glShaderSource(fragmentShaderId, 1, &fragmentShader, NULL);
-            glCompileShader(fragmentShaderId);
-            checkShaderError(fragmentShaderId, "Fragment shader compilation failed.");
-
-            // linking program
-            programId = glCreateProgram();
-            glAttachShader(programId, vertexShaderId);
-            glAttachShader(programId, fragmentShaderId);
-            glLinkProgram(programId);
-            checkProgramError(programId, "Shader program link failed.");
-
-            // once linked into a program, we no longer need the shaders.
-            glDeleteShader(vertexShaderId);
-            glDeleteShader(fragmentShaderId);
-
-            glBindAttribLocation(programId, 0, "position");
-            glBindAttribLocation(programId, 1, "vertexColor");
-
-            projectionUniformId = glGetUniformLocation(programId, "projection");
-            viewUniformId = glGetUniformLocation(programId, "view");
-            modelUniformId = glGetUniformLocation(programId, "model");
-            initialized = true;
-        }
+GLuint createProgram(const char* pVertexSource, const char* pFragmentSource) {
+    GLuint vertexShader = loadShader(GL_VERTEX_SHADER, pVertexSource);
+    if (!vertexShader) {
+        return 0;
     }
 
-    void useProgram(const GLfloat projection[], const GLfloat view[], const GLfloat model[]) {
-        init();
-        LOGI("[OSVR] SampleShader::useProgram()");
-        glUseProgram(programId);
-
-        GLfloat projectionf[16];
-        GLfloat viewf[16];
-        GLfloat modelf[16];
-
-        convertMatrix(projection, projectionf);
-        convertMatrix(view, viewf);
-        convertMatrix(model, modelf);
-
-        glUniformMatrix4fv(projectionUniformId, 1, GL_FALSE, projectionf);
-        glUniformMatrix4fv(viewUniformId, 1, GL_FALSE, viewf);
-        glUniformMatrix4fv(modelUniformId, 1, GL_FALSE, modelf);
+    GLuint pixelShader = loadShader(GL_FRAGMENT_SHADER, pFragmentSource);
+    if (!pixelShader) {
+        return 0;
     }
 
-private:
-    SampleShader(const SampleShader&) = delete;
-    SampleShader& operator=(const SampleShader&) = delete;
-    bool initialized = false;
-    GLuint programId = 0;
-    GLuint projectionUniformId = 0;
-    GLuint viewUniformId = 0;
-    GLuint modelUniformId = 0;
-
-    void checkShaderError(GLuint shaderId, const std::string& exceptionMsg) {
-        GLint result = GL_FALSE;
-        int infoLength = 0;
-        glGetShaderiv(shaderId, GL_COMPILE_STATUS, &result);
-        glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLength);
-        if (result == GL_FALSE) {
-            std::vector<GLchar> errorMessage(infoLength + 1);
-            glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
-            LOGI("[OSVR] program error: %s (%s)", &errorMessage[0], exceptionMsg.c_str());
-            throw std::runtime_error(exceptionMsg);
+    GLuint program = glCreateProgram();
+    if (program) {
+        glAttachShader(program, vertexShader);
+        checkGlError("glAttachShader");
+        glAttachShader(program, pixelShader);
+        checkGlError("glAttachShader");
+        glLinkProgram(program);
+        GLint linkStatus = GL_FALSE;
+        glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
+        if (linkStatus != GL_TRUE) {
+            GLint bufLength = 0;
+            glGetProgramiv(program, GL_INFO_LOG_LENGTH, &bufLength);
+            if (bufLength) {
+                char* buf = (char*) malloc(bufLength);
+                if (buf) {
+                    glGetProgramInfoLog(program, bufLength, NULL, buf);
+                    LOGE("Could not link program:\n%s\n", buf);
+                    free(buf);
+                }
+            }
+            glDeleteProgram(program);
+            program = 0;
         }
     }
+    return program;
+}
 
-    void checkProgramError(GLuint programId, const std::string& exceptionMsg) {
-        GLint result = GL_FALSE;
-        int infoLength = 0;
-        glGetProgramiv(programId, GL_LINK_STATUS, &result);
-        glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLength);
-        if (result == GL_FALSE) {
-            std::vector<GLchar> errorMessage(infoLength + 1);
-            glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
-            LOGI("[OSVR] program error: %s (%s)", &errorMessage[0], exceptionMsg.c_str());
-            throw std::runtime_error(exceptionMsg);
-        }
-    }
+GLuint gProgram;
+GLuint gvPositionHandle;
+GLuint gvProjectionUniformId;
+GLuint gvViewUniformId;
+GLuint gvModelUniformId;
 
-    void convertMatrix(const GLfloat source[], GLfloat dest_out[])
-    {
-        if (nullptr == source || nullptr == dest_out) {
-            throw new std::logic_error("source and dest_out must be non-null.");
-        }
-        for (int i = 0; i < 16; i++) {
-            dest_out[i] = source[i];
-        }
+bool setupGraphics(int w, int h) {
+    printGLString("Version", GL_VERSION);
+    printGLString("Vendor", GL_VENDOR);
+    printGLString("Renderer", GL_RENDERER);
+    printGLString("Extensions", GL_EXTENSIONS);
+
+    LOGI("setupGraphics(%d, %d)", w, h);
+    gProgram = createProgram(gVertexShader, gFragmentShader);
+    if (!gProgram) {
+        LOGE("Could not create program.");
+        return false;
     }
-};
-static SampleShader sampleShader;
+    gvPositionHandle = glGetAttribLocation(gProgram, "vPosition");
+    checkGlError("glGetAttribLocation");
+    LOGI("glGetAttribLocation(\"vPosition\") = %d\n",
+         gvPositionHandle);
+
+    gvProjectionUniformId = glGetUniformLocation(gProgram, "projection");
+    gvViewUniformId = glGetUniformLocation(gProgram, "view");
+    gvModelUniformId = glGetUniformLocation(gProgram, "model");
+
+    glViewport(0, 0, w, h);
+    checkGlError("glViewport");
+    return true;
+}
+
+//class SampleShader {
+//public:
+//    SampleShader() { }
+//
+//    ~SampleShader() {
+//        if (initialized) {
+//            glDeleteProgram(programId);
+//        }
+//    }
+//
+//    void init() {
+//        if (!initialized) {
+//            LOGI("[OSVR] Initializing sample shader.");
+////            GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
+////            GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+////
+////            // vertex shader
+////            glShaderSource(vertexShaderId, 1, &vertexShader, NULL);
+////            glCompileShader(vertexShaderId);
+////            checkShaderError(vertexShaderId, "Vertex shader compilation failed.");
+////
+////            // fragment shader
+////            glShaderSource(fragmentShaderId, 1, &fragmentShader, NULL);
+////            glCompileShader(fragmentShaderId);
+////            checkShaderError(fragmentShaderId, "Fragment shader compilation failed.");
+////
+////            // linking program
+////            programId = glCreateProgram();
+////            glAttachShader(programId, vertexShaderId);
+////            glAttachShader(programId, fragmentShaderId);
+////            glLinkProgram(programId);
+////            checkProgramError(programId, "Shader program link failed.");
+////
+////            // once linked into a program, we no longer need the shaders.
+////            glDeleteShader(vertexShaderId);
+////            glDeleteShader(fragmentShaderId);
+//
+//            programId = createProgram(vertexShader, fragmentShader);
+////            glBindAttribLocation(programId, 0, "position");
+////            glBindAttribLocation(programId, 1, "vertexColor");
+//
+//            positionHandle = glGetAttribLocation(programId, "position");
+//            colorHandle = glGetAttribLocation(programId, "vertexColor");
+//
+//            projectionUniformId = glGetUniformLocation(programId, "projection");
+//            viewUniformId = glGetUniformLocation(programId, "view");
+//            modelUniformId = glGetUniformLocation(programId, "model");
+//            initialized = true;
+//        }
+//    }
+//
+//    void useProgram(const GLfloat projection[], const GLfloat view[], const GLfloat model[]) {
+//        init();
+//        LOGI("[OSVR] SampleShader::useProgram()");
+//        glUseProgram(programId);
+//
+//        GLfloat projectionf[16];
+//        GLfloat viewf[16];
+//        GLfloat modelf[16];
+//
+//        convertMatrix(projection, projectionf);
+//        convertMatrix(view, viewf);
+//        convertMatrix(model, modelf);
+//
+//        glUniformMatrix4fv(projectionUniformId, 1, GL_FALSE, projectionf);
+//        glUniformMatrix4fv(viewUniformId, 1, GL_FALSE, viewf);
+//        glUniformMatrix4fv(modelUniformId, 1, GL_FALSE, modelf);
+//    }
+//
+//    GLuint positionHandle;
+//    GLuint colorHandle;
+//private:
+//    SampleShader(const SampleShader&) = delete;
+//    SampleShader& operator=(const SampleShader&) = delete;
+//    bool initialized = false;
+//    GLuint programId = 0;
+//    GLuint projectionUniformId = 0;
+//    GLuint viewUniformId = 0;
+//    GLuint modelUniformId = 0;
+//
+//    void checkShaderError(GLuint shaderId, const std::string& exceptionMsg) {
+//        GLint result = GL_FALSE;
+//        int infoLength = 0;
+//        glGetShaderiv(shaderId, GL_COMPILE_STATUS, &result);
+//        glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLength);
+//        if (result == GL_FALSE) {
+//            std::vector<GLchar> errorMessage(infoLength + 1);
+//            glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
+//            LOGI("[OSVR] program error: %s (%s), infoLength: %d", &errorMessage[0], exceptionMsg.c_str(), infoLength);
+//            throw std::runtime_error(exceptionMsg);
+//        }
+//    }
+//
+//    void checkProgramError(GLuint programId, const std::string& exceptionMsg) {
+//        GLint result = GL_FALSE;
+//        int infoLength = 0;
+//        glGetProgramiv(programId, GL_LINK_STATUS, &result);
+//        glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLength);
+//        if (result == GL_FALSE) {
+//            std::vector<GLchar> errorMessage(infoLength + 1);
+//            glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
+//            LOGI("[OSVR] program error: %s (%s), infoLength: %d", &errorMessage[0], exceptionMsg.c_str(), infoLength);
+//            throw std::runtime_error(exceptionMsg);
+//        }
+//    }
+//
+//    void convertMatrix(const GLfloat source[], GLfloat dest_out[])
+//    {
+//        if (nullptr == source || nullptr == dest_out) {
+//            throw new std::logic_error("source and dest_out must be non-null.");
+//        }
+//        for (int i = 0; i < 16; i++) {
+//            dest_out[i] = source[i];
+//        }
+//    }
+//};
+//SampleShader sampleShader;
 osvr::clientkit::DisplayConfig* osvrDisplayConfig;
 
-class Cube {
-public:
-    Cube(GLfloat scale) {
-        colorBufferData = {
-                0.0, 1.0, 0.0,
-                0.0, 1.0, 0.0,
-                0.0, 0.0, 1.0,
-                0.0, 0.0, 1.0,
+const GLfloat gTriangleVertices[] = { 0.0f, 0.5f, -0.5f, -0.5f,
+                                      0.5f, -0.5f };
 
-                0.0, 0.0, 1.0,
-                0.0, 0.0, 1.0,
-                1.0, 0.0, 0.0,
-                1.0, 0.0, 0.0,
-        };
-
-        vertexBufferData = {
-                -scale, -scale, scale,
-                scale, -scale, scale,
-                scale, scale, scale,
-                -scale, scale, scale,
-                -scale, -scale, -scale,
-                scale, -scale, -scale,
-                scale, scale, -scale,
-                -scale, scale, -scale,
-        };
-
-        vertexElementBufferData = {
-                0, 1, 2,
-                2, 3, 0,
-                3, 2, 6,
-                6, 7, 3,
-                7, 6, 5,
-                5, 4, 7,
-                4, 5, 1,
-                1, 0, 4,
-                4, 0, 3,
-                3, 7, 4,
-                1, 5, 6,
-                6, 2, 1,
-        };
-    }
-
-    ~Cube() {
-        if (initialized) {
-            glDeleteBuffers(1, &vertexBuffer);
-            glDeleteVertexArraysOES(1, &vertexArrayId);
-        }
-    }
-
-    void init() {
-        if (!initialized) {
-            LOGI("[OSVR] Initializing cube.");
-            // Vertex buffer
-            glGenBuffers(1, &vertexBuffer);
-            glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-            glBufferData(GL_ARRAY_BUFFER,
-                         sizeof(vertexBufferData[0]) * vertexBufferData.size(),
-                         &vertexBufferData[0],
-                         GL_STATIC_DRAW);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            // Vertex element buffer
-            glGenBuffers(1, &vertexElementBuffer);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexElementBuffer);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                         sizeof(vertexBufferData[0]) * vertexElementBufferData.size(),
-                         &vertexElementBufferData[0],
-                         GL_STATIC_DRAW);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-            // Color buffer
-            glGenBuffers(1, &colorBuffer);
-            glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-            glBufferData(GL_ARRAY_BUFFER,
-                         sizeof(colorBufferData[0]) * colorBufferData.size(),
-                         &colorBufferData[0],
-                         GL_STATIC_DRAW);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            // Vertex array object
-//            glGenVertexArraysOES(1, &vertexArrayId);
-//            glBindVertexArrayOES(vertexArrayId); {
-//                // color
-//                glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-//                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+//class Cube {
+//public:
+//    Cube(GLfloat scale) {
+//        colorBufferData = {
+//                0.0, 1.0, 0.0,
+//                0.0, 1.0, 0.0,
+//                0.0, 0.0, 1.0,
+//                0.0, 0.0, 1.0,
 //
-//                // VBO
-//                glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-//                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+//                0.0, 0.0, 1.0,
+//                0.0, 0.0, 1.0,
+//                1.0, 0.0, 0.0,
+//                1.0, 0.0, 0.0,
+//        };
 //
-//                // EBO
-//                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexElementBuffer);
+//        vertexBufferData = {
+//                -scale, -scale, scale,
+//                scale, -scale, scale,
+//                scale, scale, scale,
+//                -scale, scale, scale,
+//                -scale, -scale, -scale,
+//                scale, -scale, -scale,
+//                scale, scale, -scale,
+//                -scale, scale, -scale,
+//        };
 //
-//                glEnableVertexAttribArray(0);
-//                glEnableVertexAttribArray(1);
-//            } glBindVertexArrayOES(0);
-            initialized = true;
-        }
-    }
-
-    void draw(const GLfloat projection[], const GLfloat view[], const GLfloat model[]) {
-        init();
-        LOGI("[OSVR] Cube::draw()");
-        sampleShader.useProgram(projection, view, model);
-
-        // color
-        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
-
-        // VBO
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
-
-        // EBO
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexElementBuffer);
-
-        glEnableVertexAttribArray(0);
-        glEnableVertexAttribArray(1);
-
-//        glBindVertexArrayOES(vertexArrayId); {
-            glDrawElements(GL_TRIANGLES,
-                           static_cast<GLsizei>(vertexElementBufferData.size()),
-                           GL_UNSIGNED_INT, (GLvoid*)0);
-//        } glBindVertexArrayOES(0);
-    }
-
-private:
-    Cube(const Cube&) = delete;
-    Cube& operator=(const Cube&) = delete;
-    bool initialized = false;
-    GLuint colorBuffer = 0;
-    GLuint vertexBuffer = 0;
-    GLuint vertexElementBuffer = 0;
-    GLuint vertexArrayId = 0;
-    std::vector<GLfloat> colorBufferData;
-    std::vector<GLfloat> vertexBufferData;
-    std::vector<GLuint> vertexElementBufferData;
-};
-
-static Cube roomCube(1.0f);
-
-
-/// @brief A simple dummy "draw" function - note that drawing occurs in "room
-/// space" by default. (that is, in this example, the modelview matrix when this
-/// function is called is initialized such that it transforms from world space
-/// to view space)
-static void renderScene(const GLfloat projection[], const GLfloat view[], const GLfloat model[]) {
-    roomCube.draw(projection, view, model);
-}
+//        vertexElementBufferData = {
+//                0, 1, 2,
+//                2, 3, 0,
+//                3, 2, 6,
+//                6, 7, 3,
+//                7, 6, 5,
+//                5, 4, 7,
+//                4, 5, 1,
+//                1, 0, 4,
+//                4, 0, 3,
+//                3, 7, 4,
+//                1, 5, 6,
+//                6, 2, 1,
+//        };
+//    }
+//
+//    ~Cube() {
+//        if (initialized) {
+//            glDeleteBuffers(1, &vertexBuffer);
+//            glDeleteVertexArraysOES(1, &vertexArrayId);
+//        }
+//    }
+//
+//    void init() {
+//        if (!initialized) {
+////            LOGI("[OSVR] Initializing cube.");
+////            // Vertex buffer
+////            glGenBuffers(1, &vertexBuffer);
+////            glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+////            glBufferData(GL_ARRAY_BUFFER,
+////                         sizeof(vertexBufferData[0]) * vertexBufferData.size(),
+////                         &vertexBufferData[0],
+////                         GL_STATIC_DRAW);
+////            glBindBuffer(GL_ARRAY_BUFFER, 0);
+////
+////            // Vertex element buffer
+////            glGenBuffers(1, &vertexElementBuffer);
+////            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexElementBuffer);
+////            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+////                         sizeof(vertexBufferData[0]) * vertexElementBufferData.size(),
+////                         &vertexElementBufferData[0],
+////                         GL_STATIC_DRAW);
+////            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+////
+////            // Color buffer
+////            glGenBuffers(1, &colorBuffer);
+////            glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+////            glBufferData(GL_ARRAY_BUFFER,
+////                         sizeof(colorBufferData[0]) * colorBufferData.size(),
+////                         &colorBufferData[0],
+////                         GL_STATIC_DRAW);
+////            glBindBuffer(GL_ARRAY_BUFFER, 0);
+//
+//            // Vertex array object
+////            glGenVertexArraysOES(1, &vertexArrayId);
+////            glBindVertexArrayOES(vertexArrayId); {
+////                // color
+////                glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+////                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+////
+////                // VBO
+////                glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+////                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+////
+////                // EBO
+////                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexElementBuffer);
+////
+////                glEnableVertexAttribArray(0);
+////                glEnableVertexAttribArray(1);
+////            } glBindVertexArrayOES(0);
+//            initialized = true;
+//        }
+//    }
+//
+//    void draw(const GLfloat projection[], const GLfloat view[], const GLfloat model[]) {
+//        init();
+//        LOGI("[OSVR] Cube::draw()");
+//        sampleShader.useProgram(projection, view, model);
+//
+//        glVertexAttribPointer(sampleShader.positionHandle, 2, GL_FLOAT, GL_FALSE, 0, gTriangleVertices);
+//        checkGlError("glVertexAttribPointer");
+//        glEnableVertexAttribArray(sampleShader.positionHandle);
+//        checkGlError("glEnableVertexAttribArray");
+//
+//        glVertexAttribPointer(sampleShader.positionHandle, 2, GL_FLOAT, GL_FALSE, 0, gTriangleVertices);
+//        checkGlError("glVertexAttribPointer");
+//        glEnableVertexAttribArray(sampleShader.positionHandle);
+//        checkGlError("glEnableVertexAttribArray");
+//
+//        glDrawArrays(GL_TRIANGLES, 0, 3);
+//        checkGlError("glDrawArrays");
+//
+////        // color
+////        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+////        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+////
+////        // VBO
+////        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+////        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+////
+////        // EBO
+////        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexElementBuffer);
+////
+////        glEnableVertexAttribArray(0);
+////        glEnableVertexAttribArray(1);
+////
+//////        glBindVertexArrayOES(vertexArrayId); {
+////            glDrawElements(GL_TRIANGLES,
+////                           static_cast<GLsizei>(vertexElementBufferData.size()),
+////                           GL_UNSIGNED_INT, (GLvoid*)0);
+////        } glBindVertexArrayOES(0);
+//    }
+//
+//private:
+//    Cube(const Cube&) = delete;
+//    Cube& operator=(const Cube&) = delete;
+//    bool initialized = false;
+//    GLuint colorBuffer = 0;
+//    GLuint vertexBuffer = 0;
+//    GLuint vertexElementBuffer = 0;
+//    GLuint vertexArrayId = 0;
+//    std::vector<GLfloat> colorBufferData;
+//    std::vector<GLfloat> vertexBufferData;
+//    std::vector<GLuint> vertexElementBufferData;
+//};
+//
+//Cube roomCube(1.0f);
 
 /**
  * Just the current frame in the display.
  */
-static void engine_draw_frame(struct engine* engine) {
-    if (engine->display == NULL) {
-        // No display.
-        return;
+void renderFrame() {
+    static float grey;
+    grey += 0.01f;
+    if (grey > 1.0f) {
+        grey = 0.0f;
     }
+    glClearColor(grey, grey, grey, 1.0f);
+    checkGlError("glClearColor");
+    glClear( GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+    checkGlError("glClear");
 
-    glClearColor(0, 0, 0, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glUseProgram(gProgram);
+    checkGlError("glUseProgram");
 
-    if(osvrDisplayConfig != NULL) {
-        LOGI("[OSVR] got osvrDisplayConfig. iterating through displays.");
-        osvrDisplayConfig->forEachEye([](osvr::clientkit::Eye eye) {
+    glVertexAttribPointer(gvPositionHandle, 2, GL_FLOAT, GL_FALSE, 0, gTriangleVertices);
+    checkGlError("glVertexAttribPointer");
+    glEnableVertexAttribArray(gvPositionHandle);
+    checkGlError("glEnableVertexAttribArray");
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    checkGlError("glDrawArrays");
 
-            /// Try retrieving the view matrix (based on eye pose) from OSVR
-            GLfloat viewMat[OSVR_MATRIX_SIZE];
-            eye.getViewMatrix(OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS,
-                              viewMat);
-
-            /// For each display surface seen by the given eye of the given
-            /// viewer...
-            eye.forEachSurface([&viewMat](osvr::clientkit::Surface surface) {
-                auto viewport = surface.getRelativeViewport();
-                glViewport(static_cast<GLint>(viewport.left),
-                           static_cast<GLint>(viewport.bottom),
-                           static_cast<GLsizei>(viewport.width),
-                           static_cast<GLsizei>(viewport.height));
-
-                /// Set the OpenGL projection matrix based on the one we
-                /// computed.
-                GLfloat zNear = 0.1;
-                GLfloat zFar = 100;
-                GLfloat projMat[OSVR_MATRIX_SIZE];
-                surface.getProjectionMatrix(
-                        zNear, zFar, OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS |
-                                     OSVR_MATRIX_SIGNEDZ | OSVR_MATRIX_RHINPUT,
-                        projMat);
-
-                const static GLfloat identityMat4f[16] = {
-                        1.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 1.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 1.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 1.0f,
-                };
-
-                /// Call out to render our scene.
-                renderScene(projMat, viewMat, identityMat4f);
-            });
-        });
-    }
-
-    eglSwapBuffers(engine->display, engine->surface);
+//    glClearColor(0, 0, 0, 1.0f);
+//    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+//
+//    if(osvrDisplayConfig != NULL) {
+//        LOGI("[OSVR] got osvrDisplayConfig. iterating through displays.");
+//        osvrDisplayConfig->forEachEye([](osvr::clientkit::Eye eye) {
+//
+//            /// Try retrieving the view matrix (based on eye pose) from OSVR
+//            GLfloat viewMat[OSVR_MATRIX_SIZE];
+//            eye.getViewMatrix(OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS,
+//                              viewMat);
+//
+//            /// For each display surface seen by the given eye of the given
+//            /// viewer...
+//            eye.forEachSurface([&viewMat](osvr::clientkit::Surface surface) {
+//                auto viewport = surface.getRelativeViewport();
+//                glViewport(static_cast<GLint>(viewport.left),
+//                           static_cast<GLint>(viewport.bottom),
+//                           static_cast<GLsizei>(viewport.width),
+//                           static_cast<GLsizei>(viewport.height));
+//
+//                /// Set the OpenGL projection matrix based on the one we
+//                /// computed.
+//                GLfloat zNear = 0.1;
+//                GLfloat zFar = 100;
+//                GLfloat projMat[OSVR_MATRIX_SIZE];
+//                surface.getProjectionMatrix(
+//                        zNear, zFar, OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS |
+//                                     OSVR_MATRIX_SIGNEDZ | OSVR_MATRIX_RHINPUT,
+//                        projMat);
+//
+//                const static GLfloat identityMat4f[16] = {
+//                        1.0f, 0.0f, 0.0f, 0.0f,
+//                        0.0f, 1.0f, 0.0f, 0.0f,
+//                        0.0f, 0.0f, 1.0f, 0.0f,
+//                        0.0f, 0.0f, 0.0f, 1.0f,
+//                };
+//
+//                /// Call out to render our scene.
+//                renderScene(projMat, viewMat, identityMat4f);
+//            });
+//        });
+//    }
 }
 
-/**
- * Tear down the EGL context currently associated with the display.
- */
-static void engine_term_display(struct engine* engine) {
-    if (engine->display != EGL_NO_DISPLAY) {
-        eglMakeCurrent(engine->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        if (engine->context != EGL_NO_CONTEXT) {
-            eglDestroyContext(engine->display, engine->context);
-        }
-        if (engine->surface != EGL_NO_SURFACE) {
-            eglDestroySurface(engine->display, engine->surface);
-        }
-        eglTerminate(engine->display);
-    }
-    engine->display = EGL_NO_DISPLAY;
-    engine->context = EGL_NO_CONTEXT;
-    engine->surface = EGL_NO_SURFACE;
-}
-
-/**
- * Process the next input event.
- */
-static int32_t engine_handle_input(struct android_app* app, AInputEvent* event) {
-    return 0;
-}
-
-/**
- * Process the next main command.
- */
-static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
-    struct engine* engine = (struct engine*)app->userData;
-    switch (cmd) {
-        case APP_CMD_SAVE_STATE:
-            break;
-        case APP_CMD_INIT_WINDOW:
-            // The window is being shown, get it ready.
-            if (engine->app->window != NULL) {
-                engine_init_display(engine);
-                engine_draw_frame(engine);
-            }
-            break;
-        case APP_CMD_TERM_WINDOW:
-            // The window is being hidden or closed, clean it up.
-            engine_term_display(engine);
-            break;
-        case APP_CMD_GAINED_FOCUS:
-
-            break;
-        case APP_CMD_LOST_FOCUS:
-            engine_draw_frame(engine);
-            break;
-    }
-}
+///**
+// * This is the main entry point of a native application that is using
+// * android_native_app_glue.  It runs in its own thread, with its own
+// * event loop for receiving input events and doing other things.
+// */
+//void android_main(struct android_app *state) {
+//    struct engine engine;
+//    osvr::clientkit::ClientContext context(
+//            "com.osvr.exampleclients.TrackerState");
+//
+//    // temporary workaround to DisplayConfig issue,
+//    // display sometimes fails waiting for the tree from the server.
+//    for(int i = 0; i < 10000; i++) {
+//        context.update();
+//    }
+//
+//    osvr::clientkit::DisplayConfig display(context);
+//    if(!display.valid()) {
+//        LOGI("[OSVR] Could not get a display config (server probably not "
+//            "running or not behaving), exiting");
+//        return;
+//    }
+//
+//    LOGI("[OSVR] Waiting for the display to fully start up, including "
+//        "receiving initial pose update...");
+//    while(!display.checkStartup()) {
+//        context.update();
+//    }
+//
+//    osvrDisplayConfig = &display;
+//
+//    LOGI("[OSVR] OK, display startup status is good!");
+//
+//    // loop waiting for stuff to do.
+//    unsigned int i = 0;
+//    std::stringstream ss;
+//    while (1) {
+//        context.update();
+//
+//        // Drawing is throttled to the screen update rate, so there
+//        // is no need to do timing here.
+//        renderFrame(&engine);
+//    }
+//}
 
 extern "C" {
-    /**
-     * This is the main entry point of a native application that is using
-     * android_native_app_glue.  It runs in its own thread, with its own
-     * event loop for receiving input events and doing other things.
-     */
-    void android_main(struct android_app *state) {
-        struct engine engine;
-        osvr::clientkit::ClientContext context(
-                "com.osvr.exampleclients.TrackerState");
+    JNIEXPORT void JNICALL Java_com_android_gl2jni_GL2JNILib_init(JNIEnv * env, jobject obj,  jint width, jint height);
+    JNIEXPORT void JNICALL Java_com_android_gl2jni_GL2JNILib_step(JNIEnv * env, jobject obj);
+};
 
-        // temporary workaround to DisplayConfig issue,
-        // display sometimes fails waiting for the tree from the server.
-        for(int i = 0; i < 10000; i++) {
-            context.update();
-        }
-
-        osvr::clientkit::DisplayConfig display(context);
-        if(!display.valid()) {
-            LOGI("[OSVR] Could not get a display config (server probably not "
-                "running or not behaving), exiting");
-            return;
-        }
-
-        LOGI("[OSVR] Waiting for the display to fully start up, including "
-            "receiving initial pose update...");
-        while(!display.checkStartup()) {
-            context.update();
-        }
-
-        osvrDisplayConfig = &display;
-
-        LOGI("[OSVR] OK, display startup status is good!");
-
-        // Make sure glue isn't stripped.
-        app_dummy();
-
-        memset(&engine, 0, sizeof(engine));
-        state->userData = &engine;
-        state->onAppCmd = engine_handle_cmd;
-        state->onInputEvent = engine_handle_input;
-        engine.app = state;
-
-        // loop waiting for stuff to do.
-        unsigned int i = 0;
-        std::stringstream ss;
-        while (1) {
-            context.update();
-
-            // Read all pending events.
-            int ident;
-            int events;
-            struct android_poll_source *source;
-
-            // If not animating, we will block forever waiting for events.
-            // If animating, we loop until all events are read, then continue
-            // to draw the next frame of animation.
-            while ((ident = ALooper_pollAll(0, NULL, &events,
-                                            (void **) &source)) >= 0) {
-
-                // Process this event.
-                if (source != NULL) {
-                    source->process(state, source);
-                }
-
-                // Check if we are exiting.
-                if (state->destroyRequested != 0) {
-                    engine_term_display(&engine);
-                    return;
-                }
-            }
-
-            // Drawing is throttled to the screen update rate, so there
-            // is no need to do timing here.
-            engine_draw_frame(&engine);
-        }
-    }
+JNIEXPORT void JNICALL Java_com_android_gl2jni_GL2JNILib_init(JNIEnv * env, jobject obj,  jint width, jint height)
+{
+    setupGraphics(width, height);
 }
+
+JNIEXPORT void JNICALL Java_com_android_gl2jni_GL2JNILib_step(JNIEnv * env, jobject obj)
+{
+    renderFrame();
+}
+
 //END_INCLUDE(all)

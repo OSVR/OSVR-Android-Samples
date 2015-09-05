@@ -3,4 +3,5 @@
 
     <string name="hello_world">Hello world!</string>
     <string name="action_settings">Settings</string>
+    <string name="gl2jni_activity">GL2JNI</string>
 </resources>
