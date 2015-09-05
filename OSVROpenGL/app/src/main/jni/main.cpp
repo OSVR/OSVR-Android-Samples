@@ -43,32 +43,16 @@ PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES = (PFNGLBINDVERTEXARRAYOESPROC)
 PFNGLDELETEVERTEXARRAYSOESPROC glDeleteVertexArraysOES = (PFNGLDELETEVERTEXARRAYSOESPROC)eglGetProcAddress ( "glDeleteVertexArraysOES" );
 
 /**
- * Our saved state data.
- */
-struct saved_state {
-    float angle;
-    int32_t x;
-    int32_t y;
-};
-
-/**
  * Shared state for our app.
  */
 struct engine {
     struct android_app* app;
 
-//    ASensorManager* sensorManager;
-//    const ASensor* accelerometerSensor;
-//    ASensorEventQueue* sensorEventQueue;
-
-    int animating;
     EGLDisplay display;
     EGLSurface surface;
     EGLContext context;
     int32_t width;
     int32_t height;
-    struct saved_state state;
-    osvr::clientkit::DisplayConfig* disp;
 };
 
 /**
@@ -129,7 +113,6 @@ static int engine_init_display(struct engine* engine) {
     engine->surface = surface;
     engine->width = w;
     engine->height = h;
-    engine->state.angle = 0;
 
     // Initialize GL state.
 //    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST);
@@ -143,26 +126,23 @@ static int engine_init_display(struct engine* engine) {
 // normally you'd load the shaders from a file, but in this case, let's
 // just keep things simple and load from memory.
 static const GLchar* vertexShader =
-        "#version 330 core\n"
-                "layout(location = 0) in vec3 position;\n"
-                "layout(location = 1) in vec3 vertexColor;\n"
-                "out vec3 fragmentColor;\n"
                 "uniform mat4 model;\n"
                 "uniform mat4 view;\n"
                 "uniform mat4 projection;\n"
+                "attribute vec4 position;\n"
+                "attribute vec4 vertexColor;\n"
+                "varying vec4 fragmentColor;\n"
                 "void main()\n"
                 "{\n"
-                "   gl_Position = projection * view * inverse(model) * vec4(position,1);\n"
+                "   gl_Position = projection * view * inverse(model) * position;\n"
                 "   fragmentColor = vertexColor;\n"
                 "}\n";
 
 static const GLchar* fragmentShader =
-        "#version 330 core\n"
-                "in vec3 fragmentColor;\n"
-                "out vec3 color;\n"
+                "varying vec3 fragmentColor;\n"
                 "void main()\n"
                 "{\n"
-                "    color = fragmentColor;\n"
+                "    gl_FragColor = fragmentColor;\n"
                 "}\n";
 
 class SampleShader {
@@ -177,6 +157,7 @@ public:
 
     void init() {
         if (!initialized) {
+            LOGI("[OSVR] Initializing sample shader.");
             GLuint vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
             GLuint fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
 
@@ -201,6 +182,9 @@ public:
             glDeleteShader(vertexShaderId);
             glDeleteShader(fragmentShaderId);
 
+            glBindAttribLocation(programId, 0, "position");
+            glBindAttribLocation(programId, 1, "vertexColor");
+
             projectionUniformId = glGetUniformLocation(programId, "projection");
             viewUniformId = glGetUniformLocation(programId, "view");
             modelUniformId = glGetUniformLocation(programId, "model");
@@ -210,13 +194,17 @@ public:
 
     void useProgram(const GLfloat projection[], const GLfloat view[], const GLfloat model[]) {
         init();
+        LOGI("[OSVR] SampleShader::useProgram()");
         glUseProgram(programId);
+
         GLfloat projectionf[16];
         GLfloat viewf[16];
         GLfloat modelf[16];
+
         convertMatrix(projection, projectionf);
         convertMatrix(view, viewf);
         convertMatrix(model, modelf);
+
         glUniformMatrix4fv(projectionUniformId, 1, GL_FALSE, projectionf);
         glUniformMatrix4fv(viewUniformId, 1, GL_FALSE, viewf);
         glUniformMatrix4fv(modelUniformId, 1, GL_FALSE, modelf);
@@ -239,7 +227,7 @@ private:
         if (result == GL_FALSE) {
             std::vector<GLchar> errorMessage(infoLength + 1);
             glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
-            std::cerr << &errorMessage[0] << std::endl;
+            LOGI("[OSVR] program error: %s (%s)", &errorMessage[0], exceptionMsg.c_str());
             throw std::runtime_error(exceptionMsg);
         }
     }
@@ -252,7 +240,7 @@ private:
         if (result == GL_FALSE) {
             std::vector<GLchar> errorMessage(infoLength + 1);
             glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
-            std::cerr << &errorMessage[0] << std::endl;
+            LOGI("[OSVR] program error: %s (%s)", &errorMessage[0], exceptionMsg.c_str());
             throw std::runtime_error(exceptionMsg);
         }
     }
@@ -268,6 +256,7 @@ private:
     }
 };
 static SampleShader sampleShader;
+osvr::clientkit::DisplayConfig* osvrDisplayConfig;
 
 class Cube {
 public:
@@ -320,6 +309,7 @@ public:
 
     void init() {
         if (!initialized) {
+            LOGI("[OSVR] Initializing cube.");
             // Vertex buffer
             glGenBuffers(1, &vertexBuffer);
             glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
@@ -348,36 +338,50 @@ public:
             glBindBuffer(GL_ARRAY_BUFFER, 0);
 
             // Vertex array object
-            glGenVertexArraysOES(1, &vertexArrayId);
-            glBindVertexArrayOES(vertexArrayId); {
-                // color
-                glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
-
-                // VBO
-                glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
-
-                // EBO
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexElementBuffer);
-
-                glEnableVertexAttribArray(0);
-                glEnableVertexAttribArray(1);
-            } glBindVertexArrayOES(0);
+//            glGenVertexArraysOES(1, &vertexArrayId);
+//            glBindVertexArrayOES(vertexArrayId); {
+//                // color
+//                glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+//                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+//
+//                // VBO
+//                glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+//                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+//
+//                // EBO
+//                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexElementBuffer);
+//
+//                glEnableVertexAttribArray(0);
+//                glEnableVertexAttribArray(1);
+//            } glBindVertexArrayOES(0);
             initialized = true;
         }
     }
 
     void draw(const GLfloat projection[], const GLfloat view[], const GLfloat model[]) {
         init();
-
+        LOGI("[OSVR] Cube::draw()");
         sampleShader.useProgram(projection, view, model);
 
-        glBindVertexArrayOES(vertexArrayId); {
+        // color
+        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+
+        // VBO
+        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+
+        // EBO
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vertexElementBuffer);
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+
+//        glBindVertexArrayOES(vertexArrayId); {
             glDrawElements(GL_TRIANGLES,
                            static_cast<GLsizei>(vertexElementBufferData.size()),
                            GL_UNSIGNED_INT, (GLvoid*)0);
-        } glBindVertexArrayOES(0);
+//        } glBindVertexArrayOES(0);
     }
 
 private:
@@ -416,18 +420,14 @@ static void engine_draw_frame(struct engine* engine) {
     glClearColor(0, 0, 0, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if(engine->disp != NULL) {
-        engine->disp->forEachEye([](osvr::clientkit::Eye eye) {
+    if(osvrDisplayConfig != NULL) {
+        LOGI("[OSVR] got osvrDisplayConfig. iterating through displays.");
+        osvrDisplayConfig->forEachEye([](osvr::clientkit::Eye eye) {
 
             /// Try retrieving the view matrix (based on eye pose) from OSVR
             GLfloat viewMat[OSVR_MATRIX_SIZE];
             eye.getViewMatrix(OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS,
                               viewMat);
-            /// Initialize the ModelView transform with the view matrix we
-            /// received
-            //glMatrixMode(GL_MODELVIEW);
-            //glLoadIdentity();
-            //glMultMatrixd(viewMat);
 
             /// For each display surface seen by the given eye of the given
             /// viewer...
@@ -447,14 +447,6 @@ static void engine_draw_frame(struct engine* engine) {
                         zNear, zFar, OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS |
                                      OSVR_MATRIX_SIGNEDZ | OSVR_MATRIX_RHINPUT,
                         projMat);
-
-//                glMatrixMode(GL_PROJECTION);
-//                glLoadIdentity();
-//                glMultMatrixd(projMat);
-
-//                /// Set the matrix mode to ModelView, so render code doesn't
-//                /// mess with the projection matrix on accident.
-//                glMatrixMode(GL_MODELVIEW);
 
                 const static GLfloat identityMat4f[16] = {
                         1.0f, 0.0f, 0.0f, 0.0f,
@@ -486,7 +478,6 @@ static void engine_term_display(struct engine* engine) {
         }
         eglTerminate(engine->display);
     }
-    engine->animating = 0;
     engine->display = EGL_NO_DISPLAY;
     engine->context = EGL_NO_CONTEXT;
     engine->surface = EGL_NO_SURFACE;
@@ -496,13 +487,6 @@ static void engine_term_display(struct engine* engine) {
  * Process the next input event.
  */
 static int32_t engine_handle_input(struct android_app* app, AInputEvent* event) {
-    struct engine* engine = (struct engine*)app->userData;
-    if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
-        engine->animating = 1;
-        engine->state.x = AMotionEvent_getX(event, 0);
-        engine->state.y = AMotionEvent_getY(event, 0);
-        return 1;
-    }
     return 0;
 }
 
@@ -513,10 +497,6 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
     struct engine* engine = (struct engine*)app->userData;
     switch (cmd) {
         case APP_CMD_SAVE_STATE:
-            // The system has asked us to save our current state.  Do so.
-            engine->app->savedState = malloc(sizeof(struct saved_state));
-            *((struct saved_state*)engine->app->savedState) = engine->state;
-            engine->app->savedStateSize = sizeof(struct saved_state);
             break;
         case APP_CMD_INIT_WINDOW:
             // The window is being shown, get it ready.
@@ -530,24 +510,9 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
             engine_term_display(engine);
             break;
         case APP_CMD_GAINED_FOCUS:
-            // When our app gains focus, we start monitoring the accelerometer.
-//            if (engine->accelerometerSensor != NULL) {
-//                ASensorEventQueue_enableSensor(engine->sensorEventQueue,
-//                        engine->accelerometerSensor);
-//                // We'd like to get 60 events per second (in us).
-//                ASensorEventQueue_setEventRate(engine->sensorEventQueue,
-//                        engine->accelerometerSensor, (1000L/60)*1000);
-//            }
+
             break;
         case APP_CMD_LOST_FOCUS:
-            // When our app loses focus, we stop monitoring the accelerometer.
-            // This is to avoid consuming battery while not being used.
-//            if (engine->accelerometerSensor != NULL) {
-//                ASensorEventQueue_disableSensor(engine->sensorEventQueue,
-//                        engine->accelerometerSensor);
-//            }
-            // Also stop animating.
-            engine->animating = 0;
             engine_draw_frame(engine);
             break;
     }
@@ -564,6 +529,12 @@ extern "C" {
         osvr::clientkit::ClientContext context(
                 "com.osvr.exampleclients.TrackerState");
 
+        // temporary workaround to DisplayConfig issue,
+        // display sometimes fails waiting for the tree from the server.
+        for(int i = 0; i < 10000; i++) {
+            context.update();
+        }
+
         osvr::clientkit::DisplayConfig display(context);
         if(!display.valid()) {
             LOGI("[OSVR] Could not get a display config (server probably not "
@@ -577,7 +548,7 @@ extern "C" {
             context.update();
         }
 
-        engine.disp = &display;
+        osvrDisplayConfig = &display;
 
         LOGI("[OSVR] OK, display startup status is good!");
 
@@ -589,20 +560,6 @@ extern "C" {
         state->onAppCmd = engine_handle_cmd;
         state->onInputEvent = engine_handle_input;
         engine.app = state;
-        engine.animating = true;
-
-        // Prepare to monitor accelerometer
-//        engine.sensorManager = ASensorManager_getInstance();
-//        engine.accelerometerSensor = ASensorManager_getDefaultSensor(engine.sensorManager,
-//                                                                     ASENSOR_TYPE_ACCELEROMETER);
-//        engine.sensorEventQueue = ASensorManager_createEventQueue(engine.sensorManager,
-//                                                                  state->looper, LOOPER_ID_USER, NULL,
-//                                                                  NULL);
-
-        if (state->savedState != NULL) {
-            // We are starting with a previous saved state; restore from it.
-            engine.state = *(struct saved_state *) state->savedState;
-        }
 
         // loop waiting for stuff to do.
         unsigned int i = 0;
@@ -618,26 +575,13 @@ extern "C" {
             // If not animating, we will block forever waiting for events.
             // If animating, we loop until all events are read, then continue
             // to draw the next frame of animation.
-            while ((ident = ALooper_pollAll(engine.animating ? 0 : -1, NULL, &events,
+            while ((ident = ALooper_pollAll(0, NULL, &events,
                                             (void **) &source)) >= 0) {
 
                 // Process this event.
                 if (source != NULL) {
                     source->process(state, source);
                 }
-
-                // If a sensor has data, process it now.
-//                if (ident == LOOPER_ID_USER) {
-//                    if (engine.accelerometerSensor != NULL) {
-//                        ASensorEvent event;
-//                        while (ASensorEventQueue_getEvents(engine.sensorEventQueue,
-//                                                           &event, 1) > 0) {
-//                            LOGI("accelerometer: x=%f y=%f z=%f",
-//                                 event.acceleration.x, event.acceleration.y,
-//                                 event.acceleration.z);
-//                        }
-//                    }
-//                }
 
                 // Check if we are exiting.
                 if (state->destroyRequested != 0) {
@@ -646,17 +590,9 @@ extern "C" {
                 }
             }
 
-            if (engine.animating) {
-                // Done with events; draw next animation frame.
-                engine.state.angle += .01f;
-                if (engine.state.angle > 1) {
-                    engine.state.angle = 0;
-                }
-
-                // Drawing is throttled to the screen update rate, so there
-                // is no need to do timing here.
-                engine_draw_frame(&engine);
-            }
+            // Drawing is throttled to the screen update rate, so there
+            // is no need to do timing here.
+            engine_draw_frame(&engine);
         }
     }
 }
