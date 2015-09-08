@@ -14,23 +14,19 @@
  * limitations under the License.
  */
 
-package com.android.gl2jni;
+package com.osvr.android.gles2sample;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.util.Log;
-import android.view.WindowManager;
-
-import java.io.File;
 
 
-public class GL2JNIActivity extends Activity {
+public class MainActivity extends Activity {
 
-    GL2JNIView mView;
+    MainActivityView mView;
 
     @Override protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
-        mView = new GL2JNIView(getApplication());
+        mView = new MainActivityView(getApplication());
 	setContentView(mView);
     }
 

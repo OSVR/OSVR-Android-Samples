@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-package com.android.gl2jni;
+package com.osvr.android.gles2sample;
 
 // Wrapper for native library
 
-public class GL2JNILib {
+public class MainActivityJNILib {
 
      static {
          System.loadLibrary("gnustl_shared");
