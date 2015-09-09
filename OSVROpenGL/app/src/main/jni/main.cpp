@@ -369,9 +369,24 @@ void renderFrame() {
     }
 }
 
+void stop() {
+    LOGI("[OSVR] Shutting down...");
+    if(gOSVRDisplayConfig != nullptr) {
+        delete gOSVRDisplayConfig;
+        gOSVRDisplayConfig = nullptr;
+    }
+
+    // is this needed? Maybe not. the display config manages the lifetime.
+    if(gClientContext != nullptr) {
+        delete gClientContext;
+        gClientContext = nullptr;
+    }
+}
+
 extern "C" {
     JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_init(JNIEnv * env, jobject obj,  jint width, jint height);
     JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_step(JNIEnv * env, jobject obj);
+    JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_stop(JNIEnv * env, jobject obj);
 };
 
 JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_init(JNIEnv * env, jobject obj,  jint width, jint height)
@@ -382,6 +397,11 @@ JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_init
 JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_step(JNIEnv * env, jobject obj)
 {
     renderFrame();
+}
+
+JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_stop(JNIEnv * env, jobject obj)
+{
+    stop();
 }
 
 //END_INCLUDE(all)

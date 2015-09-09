@@ -81,6 +81,10 @@ class MainActivityView extends GLSurfaceView {
         init(translucent, depth, stencil);
     }
 
+    public void onStop() {
+        MainActivityJNILib.stop();
+    }
+
     private void init(boolean translucent, int depth, int stencil) {
 
         /* By default, GLSurfaceView() creates a RGB_565 opaque surface.

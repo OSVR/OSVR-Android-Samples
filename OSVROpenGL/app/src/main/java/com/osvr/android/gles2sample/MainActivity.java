@@ -42,4 +42,9 @@ public class MainActivity extends Activity {
         super.onResume();
         mView.onResume();
     }
+
+    @Override protected void onStop() {
+        super.onStop();
+        mView.onStop();
+    }
 }
