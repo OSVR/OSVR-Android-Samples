@@ -145,11 +145,61 @@ GLuint gvModelUniformId;
 osvr::clientkit::DisplayConfig* gOSVRDisplayConfig;
 osvr::clientkit::ClientContext* gClientContext;
 
+void checkReturnCode(OSVR_ReturnCode returnCode, const char* msg) {
+    if(returnCode != OSVR_RETURN_SUCCESS) {
+        LOGI("[OSVR] OSVR method returned a failure: %s", msg);
+        throw std::runtime_error(msg);
+    }
+}
+
+OSVR_JointClientOpts createJointClientOpts()
+{
+    // @todo: dynamically get the file path, i.e. /data/data/com.osvr.android.gles2sample
+    // might need to pass it in via JNI from the java activity - not sure if there is an NDK
+    // API for it.
+    OSVR_JointClientOpts opts = osvrJointClientCreateOptions();
+
+    // This doesn't appear to work, even when setting LD_LIBRARY_PATH to
+    // /data/data/com.osvr.android.gles2sample/files and copying the plugins
+    // there. However, at least with this option I the init call succeeds
+//    checkReturnCode(osvrJointClientOptionsAutoloadPlugins(opts),
+//        "Auto-loading plugins...");
+
+    // these two plugin calls result in the init call failing.
+    // am I missing something?
+    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
+        "/data/data/com.osvr.android.gles2sample/files/osvr-plugins-0/com_osvr_Multiserver.so"),
+        "Loading multi-server");
+
+    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
+        "/data/data/com.osvr.android.gles2sample/files/osvr-plugins-0/com_osvr_android_sensorTracker.so"),
+        "Loading android sensor plugin");
+
+    // this causes the init call to fail
+    // what is the path supposed to look like here?
+    // Should this be "$.display" or "\"display\""?
+    // Is it failing to read the LG_G4.json file?
+    // @todo try to set the entire display json here as a hard-coded string blob
+    checkReturnCode(osvrJointClientOptionsAddString(opts,
+        "display", "\"/data/data/com.osvr.android.gles2sample/files/displays/LG_G4.json\""),
+        "Setting display");
+
+    // this seems to succeed when its the only action queued
+    checkReturnCode(osvrJointClientOptionsTriggerHardwareDetect(opts),
+        "Triggering hardware detect.");
+    return opts;
+}
+
 bool setupOSVR() {
     try {
-//        putenv("LD_LIBRARY_PATH=/data/data/com.osvr.osvropenglsample/files");
-//        LOGI("[OSVR] LD_LIBRARY_PATH: %s", std::getenv("LD_LIBRARY_PATH"));
-        auto ctx = osvrJointClientInit("com.osvr.android.opengles2sample", nullptr);
+        // Is this necessary? Trying to make it easier for osvrJointClientKit
+        // to find the plugins. This may not even be working as expected.
+
+        //putenv("LD_LIBRARY_PATH=/data/local/tmp/osvr/lib");
+        putenv("LD_LIBRARY_PATH=/data/data/com.osvr.android.gles2sample/files");
+        LOGI("[OSVR] LD_LIBRARY_PATH: %s", std::getenv("LD_LIBRARY_PATH"));
+        OSVR_JointClientOpts opts = createJointClientOpts();
+        auto ctx = osvrJointClientInit("com.osvr.android.opengles2sample", opts);
 
         if (!ctx) {
             LOGI("[OSVR] Could not create the joint client/server context.");
