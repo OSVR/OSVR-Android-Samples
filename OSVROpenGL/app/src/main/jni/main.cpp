@@ -142,6 +142,33 @@ GLuint gvModelUniformId;
 osvr::clientkit::DisplayConfig* gOSVRDisplayConfig;
 osvr::clientkit::ClientContext* gClientContext;
 
+bool setupOSVR() {
+    gClientContext = new osvr::clientkit::ClientContext(
+            "com.osvr.exampleclients.TrackerState");
+
+    // temporary workaround to DisplayConfig issue,
+    // display sometimes fails waiting for the tree from the server.
+    for(int i = 0; i < 10000; i++) {
+        gClientContext->update();
+    }
+
+    gOSVRDisplayConfig = new osvr::clientkit::DisplayConfig(*gClientContext);
+    if(!gOSVRDisplayConfig->valid()) {
+        LOGI("[OSVR] Could not get a display config (server probably not "
+                     "running or not behaving), exiting");
+        return false;
+    }
+
+    LOGI("[OSVR] Waiting for the display to fully start up, including "
+                 "receiving initial pose update...");
+    while(!gOSVRDisplayConfig->checkStartup()) {
+        gClientContext->update();
+    }
+
+    LOGI("[OSVR] OK, display startup status is good!");
+    return true;
+}
+
 bool setupGraphics(int w, int h) {
     printGLString("Version", GL_VERSION);
     printGLString("Vendor", GL_VENDOR);
@@ -170,31 +197,8 @@ bool setupGraphics(int w, int h) {
     checkGlError("glViewport");
 
     glDisable(GL_CULL_FACE);
-    gClientContext = new osvr::clientkit::ClientContext(
-            "com.osvr.exampleclients.TrackerState");
 
-    // temporary workaround to DisplayConfig issue,
-    // display sometimes fails waiting for the tree from the server.
-    for(int i = 0; i < 10000; i++) {
-        gClientContext->update();
-    }
-
-    gOSVRDisplayConfig = new osvr::clientkit::DisplayConfig(*gClientContext);
-    if(!gOSVRDisplayConfig->valid()) {
-        LOGI("[OSVR] Could not get a display config (server probably not "
-            "running or not behaving), exiting");
-        return false;
-    }
-
-    LOGI("[OSVR] Waiting for the display to fully start up, including "
-        "receiving initial pose update...");
-    while(!gOSVRDisplayConfig->checkStartup()) {
-        gClientContext->update();
-    }
-
-    LOGI("[OSVR] OK, display startup status is good!");
-
-    return true;
+    return setupOSVR();
 }
 
 const GLfloat gTriangleColors[] = {
