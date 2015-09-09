@@ -48,13 +48,48 @@ LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libjsoncpp.so
 include $(PREBUILT_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE := functionality
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libfunctionality.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := osvrJointClientKit
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libosvrJointClientKit.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := osvrServer
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libosvrServer.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := osvrConnection
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libosvrConnection.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := osvrPluginKit
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libosvrPluginKit.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := osvrPluginHost
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libosvrPluginHost.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := osvrVRPNServer
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libosvrVRPNServer.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
 
 LOCAL_MODULE    := native-activity
 LOCAL_SRC_FILES := main.cpp
 LOCAL_CFLAGS    := -I${OSVR_ANDROID}\include
 LOCAL_LDLIBS    := -llog -landroid -lEGL -lGLESv2
 LOCAL_STATIC_LIBRARIES := android_native_app_glue boost_serialization_static
-LOCAL_SHARED_LIBRARIES := osvrClient osvrClientKit osvrCommon osvrUtil usb1.0 gnustl_shared jsoncpp
+LOCAL_SHARED_LIBRARIES := osvrClient osvrClientKit functionality osvrCommon osvrUtil osvrServer osvrJointClientKit osvrConnection osvrPluginKit osvrPluginHost osvrVRPNServer usb1.0 gnustl_shared jsoncpp
 include $(BUILD_SHARED_LIBRARY)
 
 $(call import-module,boost/1.57.0)

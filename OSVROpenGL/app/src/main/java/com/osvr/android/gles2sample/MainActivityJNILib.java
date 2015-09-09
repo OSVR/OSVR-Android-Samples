@@ -32,6 +32,13 @@ public class MainActivityJNILib {
          System.loadLibrary("osvrCommon");
          System.loadLibrary("osvrClient");
          System.loadLibrary("osvrClientKit");
+         System.loadLibrary("functionality");
+         System.loadLibrary("osvrConnection");
+         System.loadLibrary("osvrPluginHost");
+         System.loadLibrary("osvrPluginKit");
+         System.loadLibrary("osvrVRPNServer");
+         System.loadLibrary("osvrServer");
+         System.loadLibrary("osvrJointClientKit");
          System.loadLibrary("native-activity");
      }
 

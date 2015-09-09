@@ -32,6 +32,7 @@
 #include <osvr/ClientKit/Interface.h>
 #include <osvr/ClientKit/InterfaceStateC.h>
 #include <osvr/ClientKit/Display.h>
+#include <osvr/JointClientKit/JointClientKitC.h>
 
 #define  LOG_TAG    "libgl2jni"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
@@ -143,30 +144,47 @@ osvr::clientkit::DisplayConfig* gOSVRDisplayConfig;
 osvr::clientkit::ClientContext* gClientContext;
 
 bool setupOSVR() {
-    gClientContext = new osvr::clientkit::ClientContext(
-            "com.osvr.exampleclients.TrackerState");
+    try {
+        auto ctx = osvrJointClientInit("com.osvr.android.opengles2sample", nullptr);
 
-    // temporary workaround to DisplayConfig issue,
-    // display sometimes fails waiting for the tree from the server.
-    for(int i = 0; i < 10000; i++) {
-        gClientContext->update();
-    }
+        if (ctx == nullptr) {
+            LOGI("[OSVR] Could not create the joint client/server context.");
+            return false;
+        }
 
-    gOSVRDisplayConfig = new osvr::clientkit::DisplayConfig(*gClientContext);
-    if(!gOSVRDisplayConfig->valid()) {
-        LOGI("[OSVR] Could not get a display config (server probably not "
-                     "running or not behaving), exiting");
+        gClientContext = new osvr::clientkit::ClientContext(ctx);
+
+        // temporary workaround to DisplayConfig issue,
+        // display sometimes fails waiting for the tree from the server.
+        for (int i = 0; i < 10000; i++) {
+            gClientContext->update();
+        }
+
+        gOSVRDisplayConfig = new osvr::clientkit::DisplayConfig(*gClientContext);
+        if (!gOSVRDisplayConfig->valid()) {
+            LOGI("[OSVR] Could not get a display config (server probably not "
+                         "running or not behaving), exiting");
+            return false;
+        }
+
+        LOGI("[OSVR] Waiting for the display to fully start up, including "
+                     "receiving initial pose update...");
+        int numTries = 0;
+        while (!gOSVRDisplayConfig->checkStartup() && numTries++ < 10000) {
+            gClientContext->update();
+        }
+
+        if(!gOSVRDisplayConfig->checkStartup()) {
+            LOGI("[OSVR] Timed out waiting for display to fully start up and receive the initial pose update.");
+            return false;
+        }
+
+        LOGI("[OSVR] OK, display startup status is good!");
+        return true;
+    } catch(const std::runtime_error &ex) {
+        LOGI("[OSVR] OSVR initialization failed: %s", ex.what());
         return false;
     }
-
-    LOGI("[OSVR] Waiting for the display to fully start up, including "
-                 "receiving initial pose update...");
-    while(!gOSVRDisplayConfig->checkStartup()) {
-        gClientContext->update();
-    }
-
-    LOGI("[OSVR] OK, display startup status is good!");
-    return true;
 }
 
 bool setupGraphics(int w, int h) {
