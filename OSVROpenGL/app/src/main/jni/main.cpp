@@ -24,6 +24,9 @@
 
 #include <iostream>
 #include <sstream>
+#include <chrono>
+#include <thread>
+#include <cstdlib>
 
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
@@ -44,8 +47,7 @@ static void printGLString(const char *name, GLenum s) {
 }
 
 static void checkGlError(const char* op) {
-    for (GLint error = glGetError(); error; error
-                                                    = glGetError()) {
+    for (GLint error = glGetError(); error; error = glGetError()) {
         LOGI("after %s() glError (0x%x)\n", op, error);
     }
 }
@@ -145,9 +147,11 @@ osvr::clientkit::ClientContext* gClientContext;
 
 bool setupOSVR() {
     try {
+//        putenv("LD_LIBRARY_PATH=/data/data/com.osvr.osvropenglsample/files");
+//        LOGI("[OSVR] LD_LIBRARY_PATH: %s", std::getenv("LD_LIBRARY_PATH"));
         auto ctx = osvrJointClientInit("com.osvr.android.opengles2sample", nullptr);
 
-        if (ctx == nullptr) {
+        if (!ctx) {
             LOGI("[OSVR] Could not create the joint client/server context.");
             return false;
         }
@@ -160,6 +164,11 @@ bool setupOSVR() {
             gClientContext->update();
         }
 
+        if(!gClientContext->checkStatus()) {
+            LOGI("[OSVR] Client context reported bad status.");
+            return false;
+        }
+
         gOSVRDisplayConfig = new osvr::clientkit::DisplayConfig(*gClientContext);
         if (!gOSVRDisplayConfig->valid()) {
             LOGI("[OSVR] Could not get a display config (server probably not "
@@ -167,11 +176,14 @@ bool setupOSVR() {
             return false;
         }
 
-        LOGI("[OSVR] Waiting for the display to fully start up, including "
+        LOGI("[OSVR] Got a valid display config. Waiting for the display to fully start up, including "
                      "receiving initial pose update...");
-        int numTries = 0;
-        while (!gOSVRDisplayConfig->checkStartup() && numTries++ < 10000) {
+        using clock = std::chrono::system_clock;
+        auto timeEnd = clock::now() + std::chrono::seconds(2);
+
+        while (clock::now() < timeEnd && !gOSVRDisplayConfig->checkStartup()) {
             gClientContext->update();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
         if(!gOSVRDisplayConfig->checkStartup()) {
