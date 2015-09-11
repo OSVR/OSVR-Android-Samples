@@ -28,6 +28,8 @@
 #include <thread>
 #include <cstdlib>
 
+#include <boost/filesystem.hpp>
+
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
@@ -167,22 +169,21 @@ OSVR_JointClientOpts createJointClientOpts()
 
     // these two plugin calls result in the init call failing.
     // am I missing something?
-    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
-        "/data/data/com.osvr.android.gles2sample/files/osvr-plugins-0/com_osvr_Multiserver.so"),
-        "Loading multi-server");
-
-    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
-        "/data/data/com.osvr.android.gles2sample/files/osvr-plugins-0/com_osvr_android_sensorTracker.so"),
-        "Loading android sensor plugin");
+//    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
+//        "com_osvr_Multiserver"),
+//        "Loading multi-server");
+//
+//    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
+//        "com_osvr_android_sensorTracker"),
+//        "Loading android sensor plugin");
 
     // this causes the init call to fail
     // what is the path supposed to look like here?
     // Should this be "$.display" or "\"display\""?
     // Is it failing to read the LG_G4.json file?
     // @todo try to set the entire display json here as a hard-coded string blob
-    checkReturnCode(osvrJointClientOptionsAddString(opts,
-        "display", "\"/data/data/com.osvr.android.gles2sample/files/displays/LG_G4.json\""),
-        "Setting display");
+//    checkReturnCode(osvrJointClientOptionsAddString(opts, "/display", "LG_G4.json"),
+//        "Setting display");
 
     // this seems to succeed when its the only action queued
     checkReturnCode(osvrJointClientOptionsTriggerHardwareDetect(opts),
@@ -194,6 +195,9 @@ bool setupOSVR() {
     try {
         // Is this necessary? Trying to make it easier for osvrJointClientKit
         // to find the plugins. This may not even be working as expected.
+        boost::filesystem::current_path("/data/data/com.osvr.android.gles2sample/files");
+        auto workingDirectory = boost::filesystem::current_path();
+        LOGI("[OSVR] Current working directory: %s", workingDirectory.string().c_str());
 
         //putenv("LD_LIBRARY_PATH=/data/local/tmp/osvr/lib");
         putenv("LD_LIBRARY_PATH=/data/data/com.osvr.android.gles2sample/files");
