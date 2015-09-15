@@ -173,17 +173,17 @@ OSVR_JointClientOpts createJointClientOpts()
 //        "com_osvr_Multiserver"),
 //        "Loading multi-server");
 //
-//    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
-//        "com_osvr_android_sensorTracker"),
-//        "Loading android sensor plugin");
+    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
+        "com_osvr_android_sensorTracker"),
+        "Loading android sensor plugin");
 
     // this causes the init call to fail
     // what is the path supposed to look like here?
     // Should this be "$.display" or "\"display\""?
     // Is it failing to read the LG_G4.json file?
     // @todo try to set the entire display json here as a hard-coded string blob
-//    checkReturnCode(osvrJointClientOptionsAddString(opts, "/display", "LG_G4.json"),
-//        "Setting display");
+    checkReturnCode(osvrJointClientOptionsAddString(opts, "/display", "{\"meta\": { \"schemaVersion\": 1 }, \"hmd\": { \"device\": { \"vendor\": \"OSVR\", \"model\": \"HDK\", \"num_displays\": 1, \"Version\": \"1.1\", \"Note\": \"Settings are also good for HDK 1.0\" }, \"field_of_view\": { \"monocular_horizontal\": 90, \"monocular_vertical\": 101.25, \"overlap_percent\": 100, \"pitch_tilt\": 0 }, \"resolutions\": [ { \"width\": 2560, \"height\": 1440, \"video_inputs\": 1, \"display_mode\": \"horz_side_by_side\", \"swap_eyes\": 0 } ], \"distortion\": { \"k1_red\": 0, \"k1_green\": 0, \"k1_blue\": 0 }, \"rendering\": { \"right_roll\": 0, \"left_roll\": 0 }, \"eyes\": [ { \"center_proj_x\": 0.5, \"center_proj_y\": 0.5, \"rotate_180\": 0 }, { \"center_proj_x\": 0.5, \"center_proj_y\": 0.5, \"rotate_180\": 0 } ] } }"),
+        "Setting display");
 
     // this seems to succeed when its the only action queued
     checkReturnCode(osvrJointClientOptionsTriggerHardwareDetect(opts),
