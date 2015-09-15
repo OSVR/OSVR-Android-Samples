@@ -26,7 +26,6 @@
 #include <sstream>
 #include <chrono>
 #include <thread>
-#include <cstdlib>
 
 #include <boost/filesystem.hpp>
 
@@ -199,9 +198,6 @@ bool setupOSVR() {
         auto workingDirectory = boost::filesystem::current_path();
         LOGI("[OSVR] Current working directory: %s", workingDirectory.string().c_str());
 
-        //putenv("LD_LIBRARY_PATH=/data/local/tmp/osvr/lib");
-        putenv("LD_LIBRARY_PATH=/data/data/com.osvr.android.gles2sample/files");
-        LOGI("[OSVR] LD_LIBRARY_PATH: %s", std::getenv("LD_LIBRARY_PATH"));
         OSVR_JointClientOpts opts = createJointClientOpts();
         auto ctx = osvrJointClientInit("com.osvr.android.opengles2sample", opts);
 
