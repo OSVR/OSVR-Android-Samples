@@ -26,6 +26,9 @@ android {
     // some of the config below is based off of the crystax-ndk documentation:
     // source: https://www.crystax.net/en/blog/3
 
+    // @todo create a task that copies com_osvr_android_sensorTracker.so to the appropriate place
+    // in app/assets/lib/osvr-plugins-0.
+
     task ndkBuild(type: Exec) {
       workingDir file('src/main')
       commandLine getNdkBuildCmd()

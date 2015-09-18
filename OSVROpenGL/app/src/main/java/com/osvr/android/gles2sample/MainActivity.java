@@ -21,7 +21,7 @@ package com.osvr.android.gles2sample;
 
 import android.app.Activity;
 import android.os.Bundle;
-
+import com.osvr.android.utils.OSVRPluginExtractor;
 
 public class MainActivity extends Activity {
 
@@ -29,8 +29,9 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
+        OSVRPluginExtractor.extractPlugins(this);
         mView = new MainActivityView(getApplication());
-	setContentView(mView);
+	    setContentView(mView);
     }
 
     @Override protected void onPause() {
