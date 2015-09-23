@@ -49,4 +49,5 @@ public class MainActivityJNILib {
      public static native void init(int width, int height);
      public static native void step();
      public static native void stop();
+     public static native void reportFrame(byte[] data, long width, long height, short channels, short depth);
 }

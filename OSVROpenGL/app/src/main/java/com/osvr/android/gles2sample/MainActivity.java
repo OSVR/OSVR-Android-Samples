@@ -20,23 +20,89 @@
 package com.osvr.android.gles2sample;
 
 import android.app.Activity;
+import android.content.Context;
+import android.graphics.ImageFormat;
+import android.graphics.SurfaceTexture;
+import android.hardware.Camera;
 import android.os.Bundle;
+import android.util.Log;
+import android.view.Gravity;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+import android.view.TextureView;
+import android.widget.FrameLayout;
+
+import com.osvr.android.gles2sample.MainActivityJNILib;
 import com.osvr.android.utils.OSVRPluginExtractor;
 
-public class MainActivity extends Activity {
+import java.io.IOException;
 
+
+public class MainActivity extends Activity implements Camera.PreviewCallback {
+
+    public static final String TAG = "gles2sample";
     MainActivityView mView;
+
+    SurfaceTexture mCameraTexture;
+    int mCameraPreviewWidth = -1;
+    int mCameraPreviewHeight = -1;
+    Camera mCamera;
+
+    public static boolean sOSVRPluginsLoaded = false;
+    private void setCameraParams() {
+        Camera.Parameters parms = mCamera.getParameters();
+        parms.setRecordingHint(true);
+        parms.setVideoStabilization(false);
+
+        Camera.Size size = parms.getPreviewSize();
+        mCameraPreviewWidth = size.width;
+        mCameraPreviewHeight = size.height;
+        mCamera.setParameters(parms);
+
+        int[] fpsRange = new int[2];
+        Camera.Size mCameraPreviewSize = parms.getPreviewSize();
+        parms.getPreviewFpsRange(fpsRange);
+        String previewFacts = mCameraPreviewSize.width + "x" + mCameraPreviewSize.height;
+        if (fpsRange[0] == fpsRange[1]) {
+            previewFacts += " @" + (fpsRange[0] / 1000.0) + "fps";
+        } else {
+            previewFacts += " @[" + (fpsRange[0] / 1000.0) +
+                    " - " + (fpsRange[1] / 1000.0) + "] fps";
+        }
+        Log.i(TAG, "Camera config: " + previewFacts);
+
+        mCameraPreviewWidth = mCameraPreviewSize.width;
+        mCameraPreviewHeight = mCameraPreviewSize.height;
+    }
+
+    private void openCamera() {
+        mCameraTexture = new SurfaceTexture(123);
+        mCamera = Camera.open();
+        setCameraParams();
+        try {
+            mCamera.setPreviewTexture(mCameraTexture);
+        } catch(IOException ex) {
+            Log.d(TAG, "Error on setPreviewTexture: " + ex.getMessage());
+            throw new RuntimeException("error during setPreviewTexture");
+        }
+        //mCamera.setPreviewCallbackWithBuffer(this);
+        mCamera.setPreviewCallback(this);
+        mCamera.startPreview();
+    }
 
     @Override protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
         OSVRPluginExtractor.extractPlugins(this);
         mView = new MainActivityView(getApplication());
 	    setContentView(mView);
+
+        openCamera();
     }
 
     @Override protected void onPause() {
         super.onPause();
         mView.onPause();
+
     }
 
     @Override protected void onResume() {
@@ -47,5 +113,23 @@ public class MainActivity extends Activity {
     @Override protected void onStop() {
         super.onStop();
         mView.onStop();
+
+        mCamera.stopPreview();
+        mCamera.release();
+        mCamera = null;
+    }
+
+    byte[] mDummyData = new byte[12];
+    @Override
+    public void onPreviewFrame(byte[] data, Camera camera) {
+        Log.d(TAG, "Got onPreviewFrame");
+        if(sOSVRPluginsLoaded) {
+            for (int i = 0; i < mDummyData.length; i++) {
+                mDummyData[i] = (byte) 0;
+            }
+            mDummyData[0] = (byte) 1;
+            MainActivityJNILib.reportFrame(
+                    mDummyData, mCameraPreviewWidth, mCameraPreviewHeight, (short) 3, (short) 1);
+        }
     }
 }

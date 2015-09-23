@@ -176,6 +176,9 @@ OSVR_JointClientOpts createJointClientOpts()
         "com_osvr_android_sensorTracker"),
         "Loading android sensor plugin");
 
+    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
+        "com_osvr_android_jniImaging"),
+        "Loading android sensor plugin");
     // this causes the init call to fail
     // what is the path supposed to look like here?
     // Should this be "$.display" or "\"display\""?
