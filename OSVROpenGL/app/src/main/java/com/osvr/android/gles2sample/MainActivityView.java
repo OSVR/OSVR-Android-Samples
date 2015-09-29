@@ -333,7 +333,6 @@ class MainActivityView extends GLSurfaceView {
     private static class Renderer implements GLSurfaceView.Renderer {
         public void onDrawFrame(GL10 gl) {
             MainActivityJNILib.step();
-            MainActivity.sOSVRPluginsLoaded = true;
         }
 
         public void onSurfaceChanged(GL10 gl, int width, int height) {

@@ -20,19 +20,11 @@
 package com.osvr.android.gles2sample;
 
 import android.app.Activity;
-import android.content.Context;
-import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.Gravity;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
-import android.view.TextureView;
-import android.widget.FrameLayout;
 
-import com.osvr.android.gles2sample.MainActivityJNILib;
 import com.osvr.android.utils.OSVRPluginExtractor;
 
 import java.io.IOException;
@@ -48,7 +40,6 @@ public class MainActivity extends Activity implements Camera.PreviewCallback {
     int mCameraPreviewHeight = -1;
     Camera mCamera;
 
-    public static boolean sOSVRPluginsLoaded = false;
     private void setCameraParams() {
         Camera.Parameters parms = mCamera.getParameters();
         parms.setRecordingHint(true);
@@ -114,22 +105,17 @@ public class MainActivity extends Activity implements Camera.PreviewCallback {
         super.onStop();
         mView.onStop();
 
-        mCamera.stopPreview();
-        mCamera.release();
-        mCamera = null;
+        if(mCamera != null) {
+            mCamera.stopPreview();
+            mCamera.release();
+            mCamera = null;
+        }
     }
 
-    byte[] mDummyData = new byte[12];
     @Override
     public void onPreviewFrame(byte[] data, Camera camera) {
-        Log.d(TAG, "Got onPreviewFrame");
-        if(sOSVRPluginsLoaded) {
-            for (int i = 0; i < mDummyData.length; i++) {
-                mDummyData[i] = (byte) 0;
-            }
-            mDummyData[0] = (byte) 1;
-            MainActivityJNILib.reportFrame(
-                    mDummyData, mCameraPreviewWidth, mCameraPreviewHeight, (short) 3, (short) 1);
-        }
+//        Log.d(TAG, "Got onPreviewFrame");
+        MainActivityJNILib.reportFrame(
+                data, mCameraPreviewWidth, mCameraPreviewHeight, (short) 3, (short) 1);
     }
 }

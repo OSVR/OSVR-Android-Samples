@@ -37,6 +37,10 @@
 #include <osvr/ClientKit/InterfaceStateC.h>
 #include <osvr/ClientKit/Display.h>
 #include <osvr/JointClientKit/JointClientKitC.h>
+#include <osvr/ClientKit/ContextC.h>
+#include <osvr/ClientKit/InterfaceC.h>
+#include <osvr/ClientKit/InterfaceCallbackC.h>
+#include <osvr/ClientKit/ImagingC.h>
 
 #define  LOG_TAG    "libgl2jni"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
@@ -145,6 +149,7 @@ GLuint gvViewUniformId;
 GLuint gvModelUniformId;
 osvr::clientkit::DisplayConfig* gOSVRDisplayConfig;
 osvr::clientkit::ClientContext* gClientContext;
+OSVR_ClientInterface gCamera = NULL;
 
 void checkReturnCode(OSVR_ReturnCode returnCode, const char* msg) {
     if(returnCode != OSVR_RETURN_SUCCESS) {
@@ -191,6 +196,26 @@ OSVR_JointClientOpts createJointClientOpts()
     checkReturnCode(osvrJointClientOptionsTriggerHardwareDetect(opts),
         "Triggering hardware detect.");
     return opts;
+}
+
+int gReportNumber = 0;
+void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
+                     const OSVR_ImagingReport *report) {
+
+    OSVR_ClientContext* ctx = (OSVR_ClientContext*)userdata;
+    /// The first time, let's print some info.
+    if (gReportNumber == 0) {
+        printf("Got first report: image is %d width and %d height.\n",
+               report->state.metadata.width, report->state.metadata.height);
+    }
+    else {
+        printf("Got report number %d\n", gReportNumber);
+    }
+
+    gReportNumber++;
+    if (OSVR_RETURN_SUCCESS != osvrClientFreeImage(*ctx, report->state.data)) {
+        printf("Error, osvrClientFreeImage call failed.\n");
+    }
 }
 
 bool setupOSVR() {
@@ -245,6 +270,18 @@ bool setupOSVR() {
         }
 
         LOGI("[OSVR] OK, display startup status is good!");
+        OSVR_ClientContext contextC = gClientContext->get();
+        if(OSVR_RETURN_SUCCESS != osvrClientGetInterface(contextC, "/camera", &gCamera)) {
+            LOGI("Error, could not get the camera interface at /camera.");
+            return false;
+        }
+
+        // Register the imaging callback.
+        if(OSVR_RETURN_SUCCESS != osvrRegisterImagingCallback(gCamera, &imagingCallback, &contextC)) {
+            LOGI("Error, could not register image callback.");
+            return false;
+        }
+
         return true;
     } catch(const std::runtime_error &ex) {
         LOGI("[OSVR] OSVR initialization failed: %s", ex.what());
