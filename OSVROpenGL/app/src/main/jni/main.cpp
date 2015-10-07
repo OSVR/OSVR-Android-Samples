@@ -198,24 +198,27 @@ OSVR_JointClientOpts createJointClientOpts()
     return opts;
 }
 
-int gReportNumber = 0;
+static int gReportNumber = 0;
+static OSVR_ImageBufferElement* gLastFrame = nullptr;
+
 void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
                      const OSVR_ImagingReport *report) {
 
     OSVR_ClientContext* ctx = (OSVR_ClientContext*)userdata;
     /// The first time, let's print some info.
     if (gReportNumber == 0) {
-        printf("Got first report: image is %d width and %d height.\n",
+        LOGI("[OSVR] Got first report: image is %d width and %d height.\n",
                report->state.metadata.width, report->state.metadata.height);
     }
     else {
-        printf("Got report number %d\n", gReportNumber);
+        LOGI("[OSVR] Got report number %d\n", gReportNumber);
     }
 
     gReportNumber++;
-    if (OSVR_RETURN_SUCCESS != osvrClientFreeImage(*ctx, report->state.data)) {
-        printf("Error, osvrClientFreeImage call failed.\n");
-    }
+//    if (OSVR_RETURN_SUCCESS != osvrClientFreeImage(*ctx, report->state.data)) {
+//        LOGI("[OSVR] Error, osvrClientFreeImage call failed.\n");
+//    }
+    gLastFrame = report->state.data;
 }
 
 bool setupOSVR() {
@@ -435,6 +438,10 @@ void renderFrame() {
 
     if(gOSVRDisplayConfig != NULL && gClientContext != NULL) {
         gClientContext->update();
+        if(gLastFrame != nullptr) {
+            osvrClientFreeImage(gClientContext->get(), gLastFrame);
+            gLastFrame = nullptr;
+        }
         //LOGI("[OSVR] got osvrDisplayConfig. iterating through displays.");
         gOSVRDisplayConfig->forEachEye([](osvr::clientkit::Eye eye) {
 

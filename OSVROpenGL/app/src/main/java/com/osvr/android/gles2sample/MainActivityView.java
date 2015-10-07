@@ -43,6 +43,8 @@ import android.graphics.PixelFormat;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
 
+import com.osvr.android.jni.JNIBridge;
+
 import javax.microedition.khronos.egl.EGL10;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.egl.EGLContext;
@@ -82,7 +84,7 @@ class MainActivityView extends GLSurfaceView {
     }
 
     public void onStop() {
-        MainActivityJNILib.stop();
+        JNIBridge.stop();
     }
 
     private void init(boolean translucent, int depth, int stencil) {
@@ -332,11 +334,11 @@ class MainActivityView extends GLSurfaceView {
 
     private static class Renderer implements GLSurfaceView.Renderer {
         public void onDrawFrame(GL10 gl) {
-            MainActivityJNILib.step();
+            JNIBridge.step();
         }
 
         public void onSurfaceChanged(GL10 gl, int width, int height) {
-            MainActivityJNILib.init(width, height);
+            JNIBridge.init(width, height);
         }
 
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {

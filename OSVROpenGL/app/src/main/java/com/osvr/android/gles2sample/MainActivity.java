@@ -25,6 +25,7 @@ import android.hardware.Camera;
 import android.os.Bundle;
 import android.util.Log;
 
+import com.osvr.android.jni.JNIBridge;
 import com.osvr.android.utils.OSVRPluginExtractor;
 
 import java.io.IOException;
@@ -114,8 +115,8 @@ public class MainActivity extends Activity implements Camera.PreviewCallback {
 
     @Override
     public void onPreviewFrame(byte[] data, Camera camera) {
-//        Log.d(TAG, "Got onPreviewFrame");
-        MainActivityJNILib.reportFrame(
+        //Log.d(TAG, "Got onPreviewFrame");
+        JNIBridge.reportFrame(
                 data, mCameraPreviewWidth, mCameraPreviewHeight, (short) 3, (short) 1);
     }
 }

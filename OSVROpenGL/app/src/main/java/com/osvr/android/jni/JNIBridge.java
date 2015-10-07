@@ -17,11 +17,11 @@
  * limitations under the License.
  */
 
-package com.osvr.android.gles2sample;
+package com.osvr.android.jni;
 
 // Wrapper for native library
 
-public class MainActivityJNILib {
+public class JNIBridge {
 
      static {
          System.loadLibrary("gnustl_shared");
