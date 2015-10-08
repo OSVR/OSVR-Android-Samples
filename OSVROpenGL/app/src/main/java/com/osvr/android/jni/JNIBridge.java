@@ -23,31 +23,35 @@ package com.osvr.android.jni;
 
 public class JNIBridge {
 
-     static {
-         System.loadLibrary("gnustl_shared");
-         System.loadLibrary("crystax");
-         System.loadLibrary("jsoncpp");
-         System.loadLibrary("usb1.0");
-         System.loadLibrary("osvrUtil");
-         System.loadLibrary("osvrCommon");
-         System.loadLibrary("osvrClient");
-         System.loadLibrary("osvrClientKit");
-         System.loadLibrary("functionality");
-         System.loadLibrary("osvrConnection");
-         System.loadLibrary("osvrPluginHost");
-         System.loadLibrary("osvrPluginKit");
-         System.loadLibrary("osvrVRPNServer");
-         System.loadLibrary("osvrServer");
-         System.loadLibrary("osvrJointClientKit");
-         System.loadLibrary("native-activity");
-     }
+    private static boolean librariesLoaded = false;
 
+     public static void loadLibraries() {
+         if(!librariesLoaded) {
+             System.loadLibrary("gnustl_shared");
+             System.loadLibrary("crystax");
+             System.loadLibrary("jsoncpp");
+             System.loadLibrary("usb1.0");
+             System.loadLibrary("osvrUtil");
+             System.loadLibrary("osvrCommon");
+             System.loadLibrary("osvrClient");
+             System.loadLibrary("osvrClientKit");
+             System.loadLibrary("functionality");
+             System.loadLibrary("osvrConnection");
+             System.loadLibrary("osvrPluginHost");
+             System.loadLibrary("osvrPluginKit");
+             System.loadLibrary("osvrVRPNServer");
+             System.loadLibrary("osvrServer");
+             System.loadLibrary("osvrJointClientKit");
+             System.loadLibrary("native-activity");
+             librariesLoaded = true;
+         }
+     }
+    static {
+        loadLibraries();
+    }
     /**
      * @param width the current view width
      * @param height the current view height
      */
-     public static native void init(int width, int height);
-     public static native void step();
-     public static native void stop();
      public static native void reportFrame(byte[] data, long width, long height, short channels, short depth);
 }
