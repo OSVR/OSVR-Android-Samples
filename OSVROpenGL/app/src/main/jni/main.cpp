@@ -63,18 +63,23 @@ static const char gVertexShader[] =
                 "uniform mat4 projection;\n"
                 "attribute vec4 vPosition;\n"
                 "attribute vec4 vColor;\n"
+                "attribute vec2 vTexCoordinate;\n"
+                "varying vec2 texCoordinate;\n"
                 "varying vec4 fragmentColor;\n"
                 "void main() {\n"
                 "  gl_Position = projection * view * model * vPosition;\n"
                 "  fragmentColor = vColor;\n"
+                "  texCoordinate = vTexCoordinate;\n"
                 "}\n";
 
 static const char gFragmentShader[] =
         "precision mediump float;\n"
+                "uniform sampler2D uTexture;\n"
+                "varying vec2 texCoordinate;\n"
                 "varying vec4 fragmentColor;\n"
                 "void main()\n"
                 "{\n"
-                "    gl_FragColor = fragmentColor;\n"
+                "    gl_FragColor = fragmentColor * texture2D(uTexture, texCoordinate);\n"
                 "}\n";
 
 GLuint loadShader(GLenum shaderType, const char* pSource) {
@@ -118,8 +123,10 @@ GLuint createProgram(const char* pVertexSource, const char* pFragmentSource) {
     if (program) {
         glAttachShader(program, vertexShader);
         checkGlError("glAttachShader");
+
         glAttachShader(program, pixelShader);
         checkGlError("glAttachShader");
+
         glLinkProgram(program);
         GLint linkStatus = GL_FALSE;
         glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
@@ -144,12 +151,62 @@ GLuint createProgram(const char* pVertexSource, const char* pFragmentSource) {
 GLuint gProgram;
 GLuint gvPositionHandle;
 GLuint gvColorHandle;
+GLuint gvTexCoordinateHandle;
+GLuint guTextureUniformId;
 GLuint gvProjectionUniformId;
 GLuint gvViewUniformId;
 GLuint gvModelUniformId;
+GLuint gTextureID;
 osvr::clientkit::DisplayConfig* gOSVRDisplayConfig;
 osvr::clientkit::ClientContext* gClientContext;
 OSVR_ClientInterface gCamera = NULL;
+
+GLuint createTexture(GLuint width, GLuint height) {
+    LOGI("creating texture of size %d width and %d height", width, height);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    GLuint ret;
+    glGenTextures(1, &ret);
+    checkGlError("glGenTextures"); LOGI("Generated texture id %d", ret);
+
+    glBindTexture(GL_TEXTURE_2D, ret);
+    checkGlError("glBindTexture"); //LOGI("Bound texture");
+
+//    // DEBUG CODE - should be passing null here, but then texture is always black.
+    GLubyte *dummyBuffer = new GLubyte[width * height * 4];
+    for(GLuint i = 0; i < width * height * 4; i++) {
+        dummyBuffer[i] = (i % 4 ? 100 : 255);
+    }
+
+    // This dummy texture successfully makes it into the texture and renders, but subsequent
+    // calls to glTexSubImage2D don't appear to do anything.
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, dummyBuffer);
+    checkGlError("glTexImage2D");
+    delete[] dummyBuffer; LOGI("deleted buffer");
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); //LOGI("Set Mag Filter");
+    checkGlError("glTexParameteri");
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); //LOGI("Set Min Filter");
+    checkGlError("glTexParameteri");
+    return ret;
+}
+
+void updateTexture(GLuint width, GLuint height, GLubyte* data) {
+    //LOGI("Updating texture to size %d width, %d height", width, height);
+    //LOGI("first color is red: %d, green: %d, blue: %d", data[0], data[1], data[2]);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    glBindTexture(GL_TEXTURE_2D, gTextureID);
+    checkGlError("glBindTexture");
+
+    //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    //checkGlError("glTexImage2D");
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    checkGlError("glTexImage2D");
+}
 
 void checkReturnCode(OSVR_ReturnCode returnCode, const char* msg) {
     if(returnCode != OSVR_RETURN_SUCCESS) {
@@ -200,7 +257,9 @@ OSVR_JointClientOpts createJointClientOpts()
 
 static int gReportNumber = 0;
 static OSVR_ImageBufferElement* gLastFrame = nullptr;
-
+GLuint gLastFrameWidth = 0;
+GLuint gLastFrameHeight = 0;
+static GLubyte* gTextureBuffer = nullptr;
 void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
                      const OSVR_ImagingReport *report) {
 
@@ -215,10 +274,24 @@ void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
     }
 
     gReportNumber++;
-//    if (OSVR_RETURN_SUCCESS != osvrClientFreeImage(*ctx, report->state.data)) {
-//        LOGI("[OSVR] Error, osvrClientFreeImage call failed.\n");
+    GLuint width = report->state.metadata.width;
+    GLuint height = report->state.metadata.height;
+    gLastFrameWidth = width;
+    gLastFrameHeight = height;
+    GLuint size = width * height * 4;
+//    if(!gTextureBuffer) {
+//        gTextureBuffer = new GLubyte[size];
 //    }
+//    for(GLuint i = 0; i < size; i++) {
+//        if (i % 4 == 1) {
+//            gTextureBuffer[i] = 100;
+//        } else {
+//            gTextureBuffer[i] = ((gReportNumber * 4) % 255);
+//        }
+//    }
+
     gLastFrame = report->state.data;
+    //updateTexture(width, height, gLastFrame);
 }
 
 bool setupOSVR() {
@@ -312,15 +385,25 @@ bool setupGraphics(int w, int h) {
     checkGlError("glGetAttribLocation");
     LOGI("glGetAttribLocation(\"vColor\") = %d\n", gvColorHandle);
 
+    gvTexCoordinateHandle = glGetAttribLocation(gProgram, "vTexCoordinate");
+    checkGlError("glGetAttribLocation");
+    LOGI("glGetAttribLocation(\"vTexCoordinate\") = %d\n", gvTexCoordinateHandle);
+
     gvProjectionUniformId = glGetUniformLocation(gProgram, "projection");
     gvViewUniformId = glGetUniformLocation(gProgram, "view");
     gvModelUniformId = glGetUniformLocation(gProgram, "model");
+    guTextureUniformId = glGetUniformLocation(gProgram, "uTexture");
 
     glViewport(0, 0, w, h);
     checkGlError("glViewport");
 
     glDisable(GL_CULL_FACE);
 
+    // @todo can we resize the texture after it has been created?
+    // if not, we may have to delete the dummy one and create a new one after
+    // the first imaging report.
+    LOGI("Creating texture... here we go!");
+    gTextureID = createTexture(1080, 1920);
     return setupOSVR();
 }
 
@@ -366,6 +449,65 @@ const GLfloat gTriangleColors[] = {
         0.75f, 0.0f, 0.75f, 0.75f,
         1.0f, 0.0f, 1.0f, 1.0f,
         1.0f, 0.0f, 1.0f, 1.0f
+};
+
+const GLfloat gTriangleTexCoordinates[] = {
+        // A cube face (letters are unique vertices)
+        // A--B
+        // |  |
+        // D--C
+
+        // As two triangles (clockwise)
+        // A B D
+        // B C D
+
+        //glNormal3f(0.0, 0.0, -1.0);
+        0.0f, 1.0f, // A
+        1.0f, 1.0f, // B
+        0.0f, 0.0f, // D
+        1.0f, 1.0f, // B
+        1.0f, 0.0f, // C
+        0.0f, 0.0f, // D
+
+        //glNormal3f(0.0, 0.0, 1.0);
+        0.0f, 1.0f, // A
+        1.0f, 1.0f, // B
+        0.0f, 0.0f, // D
+        1.0f, 1.0f, // B
+        1.0f, 0.0f, // C
+        0.0f, 0.0f, // D
+
+//        glNormal3f(0.0, -1.0, 0.0);
+        0.0f, 1.0f, // A
+        1.0f, 1.0f, // B
+        0.0f, 0.0f, // D
+        1.0f, 1.0f, // B
+        1.0f, 0.0f, // C
+        0.0f, 0.0f, // D
+
+//        glNormal3f(0.0, 1.0, 0.0);
+        0.0f, 1.0f, // A
+        1.0f, 1.0f, // B
+        0.0f, 0.0f, // D
+        1.0f, 1.0f, // B
+        1.0f, 0.0f, // C
+        0.0f, 0.0f, // D
+
+//        glNormal3f(-1.0, 0.0, 0.0);
+        0.0f, 1.0f, // A
+        1.0f, 1.0f, // B
+        0.0f, 0.0f, // D
+        1.0f, 1.0f, // B
+        1.0f, 0.0f, // C
+        0.0f, 0.0f, // D
+
+//        glNormal3f(1.0, 0.0, 0.0);
+        0.0f, 1.0f, // A
+        1.0f, 1.0f, // B
+        0.0f, 0.0f, // D
+        1.0f, 1.0f, // B
+        1.0f, 0.0f, // C
+        0.0f, 0.0f, // D
 };
 
 const GLfloat gTriangleVertices[] = {
@@ -439,6 +581,7 @@ void renderFrame() {
     if(gOSVRDisplayConfig != NULL && gClientContext != NULL) {
         gClientContext->update();
         if(gLastFrame != nullptr) {
+            updateTexture(gLastFrameWidth, gLastFrameHeight, gLastFrame);
             osvrClientFreeImage(gClientContext->get(), gLastFrame);
             gLastFrame = nullptr;
         }
@@ -493,6 +636,16 @@ void renderFrame() {
                 checkGlError("glVertexAttribPointer");
                 glEnableVertexAttribArray(gvColorHandle);
                 checkGlError("glEnableVertexAttribArray");
+
+                glVertexAttribPointer(gvTexCoordinateHandle, 2, GL_FLOAT, GL_FALSE, 0, gTriangleTexCoordinates);
+                checkGlError("glVertexAttribPointer");
+                glEnableVertexAttribArray(gvTexCoordinateHandle);
+                checkGlError("glEnableVertexAttribArray");
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, gTextureID);
+                glUniform1i(guTextureUniformId, 0);
+
                 glDrawArrays(GL_TRIANGLES, 0, 36);
                 checkGlError("glDrawArrays");
             });
