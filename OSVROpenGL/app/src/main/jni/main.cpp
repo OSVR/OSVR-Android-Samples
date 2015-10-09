@@ -163,14 +163,12 @@ osvr::clientkit::ClientContext* gClientContext;
 OSVR_ClientInterface gCamera = NULL;
 
 GLuint createTexture(GLuint width, GLuint height) {
-    LOGI("creating texture of size %d width and %d height", width, height);
-
     GLuint ret;
     glGenTextures(1, &ret);
-    checkGlError("glGenTextures"); LOGI("Generated texture id %d", ret);
+    checkGlError("glGenTextures");
 
     glBindTexture(GL_TEXTURE_2D, ret);
-    checkGlError("glBindTexture"); //LOGI("Bound texture");
+    checkGlError("glBindTexture");
 
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -185,19 +183,17 @@ GLuint createTexture(GLuint width, GLuint height) {
     // calls to glTexSubImage2D don't appear to do anything.
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, dummyBuffer);
     checkGlError("glTexImage2D");
-    delete[] dummyBuffer; LOGI("deleted buffer");
+    delete[] dummyBuffer;
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); //LOGI("Set Mag Filter");
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     checkGlError("glTexParameteri");
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); //LOGI("Set Min Filter");
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     checkGlError("glTexParameteri");
     return ret;
 }
 
 void updateTexture(GLuint width, GLuint height, GLubyte* data) {
-    //LOGI("Updating texture to size %d width, %d height", width, height);
-    //LOGI("first color is red: %d, green: %d, blue: %d", data[0], data[1], data[2]);
 
     glBindTexture(GL_TEXTURE_2D, gTextureID);
     checkGlError("glBindTexture");
@@ -205,8 +201,9 @@ void updateTexture(GLuint width, GLuint height, GLubyte* data) {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
 
+    // @todo use glTexSubImage2D to be faster here, but add check to make sure height/width are the same.
     //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    //checkGlError("glTexImage2D");
+    //checkGlError("glTexSubImage2D");
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     checkGlError("glTexImage2D");
 }
@@ -267,14 +264,6 @@ void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
                      const OSVR_ImagingReport *report) {
 
     OSVR_ClientContext* ctx = (OSVR_ClientContext*)userdata;
-    /// The first time, let's print some info.
-    if (gReportNumber == 0) {
-        LOGI("[OSVR] Got first report: image is %d width and %d height.\n",
-               report->state.metadata.width, report->state.metadata.height);
-    }
-    else {
-        LOGI("[OSVR] Got report number %d\n", gReportNumber);
-    }
 
     gReportNumber++;
     GLuint width = report->state.metadata.width;
