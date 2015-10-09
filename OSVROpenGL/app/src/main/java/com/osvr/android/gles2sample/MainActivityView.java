@@ -40,10 +40,14 @@ package com.osvr.android.gles2sample;
 
 import android.content.Context;
 import android.graphics.PixelFormat;
+import android.graphics.SurfaceTexture;
+import android.hardware.Camera;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
 
 import com.osvr.android.jni.JNIBridge;
+
+import java.io.IOException;
 
 import javax.microedition.khronos.egl.EGL10;
 import javax.microedition.khronos.egl.EGLConfig;
@@ -69,9 +73,66 @@ import javax.microedition.khronos.opengles.GL10;
  *   that matches it exactly (with regards to red/green/blue/alpha channels
  *   bit depths). Failure to do so would result in an EGL_BAD_MATCH error.
  */
-class MainActivityView extends GLSurfaceView {
+class MainActivityView extends GLSurfaceView implements Camera.PreviewCallback {
     private static String TAG = "GL2JNIView";
     private static final boolean DEBUG = false;
+    boolean mPaused = false;
+    SurfaceTexture mCameraTexture;
+    int mCameraPreviewWidth = -1;
+    int mCameraPreviewHeight = -1;
+    Camera mCamera;
+
+    private void setCameraParams() {
+        Camera.Parameters parms = mCamera.getParameters();
+        parms.setRecordingHint(true);
+        parms.setVideoStabilization(false);
+        parms.setPreviewSize(640, 480);
+        Camera.Size size = parms.getPreviewSize();
+        mCameraPreviewWidth = size.width;
+        mCameraPreviewHeight = size.height;
+        mCamera.setParameters(parms);
+
+        int[] fpsRange = new int[2];
+        Camera.Size mCameraPreviewSize = parms.getPreviewSize();
+        parms.getPreviewFpsRange(fpsRange);
+        String previewFacts = mCameraPreviewSize.width + "x" + mCameraPreviewSize.height;
+        if (fpsRange[0] == fpsRange[1]) {
+            previewFacts += " @" + (fpsRange[0] / 1000.0) + "fps";
+        } else {
+            previewFacts += " @[" + (fpsRange[0] / 1000.0) +
+                    " - " + (fpsRange[1] / 1000.0) + "] fps";
+        }
+        Log.i(TAG, "Camera config: " + previewFacts);
+
+        mCameraPreviewWidth = mCameraPreviewSize.width;
+        mCameraPreviewHeight = mCameraPreviewSize.height;
+    }
+
+    private void openCamera() {
+        if(mCamera == null) {
+            mCameraTexture = new SurfaceTexture(123);
+            mCamera = Camera.open();
+            setCameraParams();
+            try {
+                mCamera.setPreviewTexture(mCameraTexture);
+            } catch (IOException ex) {
+                Log.d(TAG, "Error on setPreviewTexture: " + ex.getMessage());
+                throw new RuntimeException("error during setPreviewTexture");
+            }
+            //mCamera.setPreviewCallbackWithBuffer(this);
+            mCamera.setPreviewCallback(this);
+            mCamera.startPreview();
+        }
+    }
+
+    protected void stopCamera() {
+        if(mCamera != null) {
+            mCamera.setPreviewCallback(null);
+            mCamera.stopPreview();
+            mCamera.release();
+            mCamera = null;
+        }
+    }
 
     public MainActivityView(Context context) {
         super(context);
@@ -84,7 +145,18 @@ class MainActivityView extends GLSurfaceView {
     }
 
     public void onStop() {
+        stopCamera();
         MainActivityJNILib.stop();
+    }
+
+    public void onPause() {
+        mPaused = true;
+        stopCamera();
+    }
+
+    public void onResume() {
+        mPaused = false;
+        openCamera();
     }
 
     private void init(boolean translucent, int depth, int stencil) {
@@ -332,17 +404,27 @@ class MainActivityView extends GLSurfaceView {
         private int[] mValue = new int[1];
     }
 
-    private static class Renderer implements GLSurfaceView.Renderer {
+    private class Renderer implements GLSurfaceView.Renderer {
         public void onDrawFrame(GL10 gl) {
             MainActivityJNILib.step();
         }
 
         public void onSurfaceChanged(GL10 gl, int width, int height) {
             MainActivityJNILib.init(width, height);
+            openCamera();
         }
 
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
             // Do nothing.
+        }
+    }
+
+    @Override
+    public void onPreviewFrame(byte[] data, Camera camera) {
+        //Log.d(TAG, "Got onPreviewFrame");
+        if(!mPaused) {
+            JNIBridge.reportFrame(
+                    data, mCameraPreviewWidth, mCameraPreviewHeight);
         }
     }
 }

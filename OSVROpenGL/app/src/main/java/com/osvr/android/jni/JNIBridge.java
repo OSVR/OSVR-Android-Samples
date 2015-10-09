@@ -53,5 +53,5 @@ public class JNIBridge {
      * @param width the current view width
      * @param height the current view height
      */
-     public static native void reportFrame(byte[] data, long width, long height, short channels, short depth);
+     public static native void reportFrame(byte[] data, long width, long height);
 }

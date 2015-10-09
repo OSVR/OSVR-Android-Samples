@@ -31,56 +31,10 @@ import com.osvr.android.utils.OSVRPluginExtractor;
 import java.io.IOException;
 
 
-public class MainActivity extends Activity implements Camera.PreviewCallback {
+public class MainActivity extends Activity {
 
     public static final String TAG = "gles2sample";
     MainActivityView mView;
-
-    SurfaceTexture mCameraTexture;
-    int mCameraPreviewWidth = -1;
-    int mCameraPreviewHeight = -1;
-    Camera mCamera;
-
-    private void setCameraParams() {
-        Camera.Parameters parms = mCamera.getParameters();
-        parms.setRecordingHint(true);
-        parms.setVideoStabilization(false);
-
-        Camera.Size size = parms.getPreviewSize();
-        mCameraPreviewWidth = size.width;
-        mCameraPreviewHeight = size.height;
-        mCamera.setParameters(parms);
-
-        int[] fpsRange = new int[2];
-        Camera.Size mCameraPreviewSize = parms.getPreviewSize();
-        parms.getPreviewFpsRange(fpsRange);
-        String previewFacts = mCameraPreviewSize.width + "x" + mCameraPreviewSize.height;
-        if (fpsRange[0] == fpsRange[1]) {
-            previewFacts += " @" + (fpsRange[0] / 1000.0) + "fps";
-        } else {
-            previewFacts += " @[" + (fpsRange[0] / 1000.0) +
-                    " - " + (fpsRange[1] / 1000.0) + "] fps";
-        }
-        Log.i(TAG, "Camera config: " + previewFacts);
-
-        mCameraPreviewWidth = mCameraPreviewSize.width;
-        mCameraPreviewHeight = mCameraPreviewSize.height;
-    }
-
-    private void openCamera() {
-        mCameraTexture = new SurfaceTexture(123);
-        mCamera = Camera.open();
-        setCameraParams();
-        try {
-            mCamera.setPreviewTexture(mCameraTexture);
-        } catch(IOException ex) {
-            Log.d(TAG, "Error on setPreviewTexture: " + ex.getMessage());
-            throw new RuntimeException("error during setPreviewTexture");
-        }
-        //mCamera.setPreviewCallbackWithBuffer(this);
-        mCamera.setPreviewCallback(this);
-        mCamera.startPreview();
-    }
 
     @Override protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
@@ -88,13 +42,12 @@ public class MainActivity extends Activity implements Camera.PreviewCallback {
         mView = new MainActivityView(getApplication());
 	    setContentView(mView);
 
-        openCamera();
+        //openCamera();
     }
 
     @Override protected void onPause() {
         super.onPause();
         mView.onPause();
-
     }
 
     @Override protected void onResume() {
@@ -105,18 +58,5 @@ public class MainActivity extends Activity implements Camera.PreviewCallback {
     @Override protected void onStop() {
         super.onStop();
         mView.onStop();
-
-        if(mCamera != null) {
-            mCamera.stopPreview();
-            mCamera.release();
-            mCamera = null;
-        }
-    }
-
-    @Override
-    public void onPreviewFrame(byte[] data, Camera camera) {
-        //Log.d(TAG, "Got onPreviewFrame");
-        JNIBridge.reportFrame(
-                data, mCameraPreviewWidth, mCameraPreviewHeight, (short) 3, (short) 1);
     }
 }

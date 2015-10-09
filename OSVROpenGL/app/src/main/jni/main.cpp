@@ -80,6 +80,7 @@ static const char gFragmentShader[] =
                 "void main()\n"
                 "{\n"
                 "    gl_FragColor = fragmentColor * texture2D(uTexture, texCoordinate);\n"
+                //"    gl_FragColor = texture2D(uTexture, texCoordinate);\n"
                 "}\n";
 
 GLuint loadShader(GLenum shaderType, const char* pSource) {
@@ -164,14 +165,15 @@ OSVR_ClientInterface gCamera = NULL;
 GLuint createTexture(GLuint width, GLuint height) {
     LOGI("creating texture of size %d width and %d height", width, height);
 
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
     GLuint ret;
     glGenTextures(1, &ret);
     checkGlError("glGenTextures"); LOGI("Generated texture id %d", ret);
 
     glBindTexture(GL_TEXTURE_2D, ret);
     checkGlError("glBindTexture"); //LOGI("Bound texture");
+
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
 //    // DEBUG CODE - should be passing null here, but then texture is always black.
     GLubyte *dummyBuffer = new GLubyte[width * height * 4];
@@ -197,14 +199,15 @@ void updateTexture(GLuint width, GLuint height, GLubyte* data) {
     //LOGI("Updating texture to size %d width, %d height", width, height);
     //LOGI("first color is red: %d, green: %d, blue: %d", data[0], data[1], data[2]);
 
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
     glBindTexture(GL_TEXTURE_2D, gTextureID);
     checkGlError("glBindTexture");
 
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
     //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
     //checkGlError("glTexImage2D");
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     checkGlError("glTexImage2D");
 }
 
@@ -279,19 +282,8 @@ void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
     gLastFrameWidth = width;
     gLastFrameHeight = height;
     GLuint size = width * height * 4;
-//    if(!gTextureBuffer) {
-//        gTextureBuffer = new GLubyte[size];
-//    }
-//    for(GLuint i = 0; i < size; i++) {
-//        if (i % 4 == 1) {
-//            gTextureBuffer[i] = 100;
-//        } else {
-//            gTextureBuffer[i] = ((gReportNumber * 4) % 255);
-//        }
-//    }
 
     gLastFrame = report->state.data;
-    //updateTexture(width, height, gLastFrame);
 }
 
 bool setupOSVR() {
@@ -365,13 +357,13 @@ bool setupOSVR() {
     }
 }
 
-bool setupGraphics(int w, int h) {
+bool setupGraphics(int width, int height) {
     printGLString("Version", GL_VERSION);
     printGLString("Vendor", GL_VENDOR);
     printGLString("Renderer", GL_RENDERER);
     printGLString("Extensions", GL_EXTENSIONS);
 
-    LOGI("setupGraphics(%d, %d)", w, h);
+    LOGI("setupGraphics(%d, %d)", width, height);
     gProgram = createProgram(gVertexShader, gFragmentShader);
     if (!gProgram) {
         LOGE("Could not create program.");
@@ -394,7 +386,7 @@ bool setupGraphics(int w, int h) {
     gvModelUniformId = glGetUniformLocation(gProgram, "model");
     guTextureUniformId = glGetUniformLocation(gProgram, "uTexture");
 
-    glViewport(0, 0, w, h);
+    glViewport(0, 0, width, height);
     checkGlError("glViewport");
 
     glDisable(GL_CULL_FACE);
@@ -403,7 +395,7 @@ bool setupGraphics(int w, int h) {
     // if not, we may have to delete the dummy one and create a new one after
     // the first imaging report.
     LOGI("Creating texture... here we go!");
-    gTextureID = createTexture(1080, 1920);
+    gTextureID = createTexture(width, height);
     return setupOSVR();
 }
 
