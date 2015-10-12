@@ -42,20 +42,12 @@
 #include <osvr/ClientKit/InterfaceCallbackC.h>
 #include <osvr/ClientKit/ImagingC.h>
 
+#include <osvr/Server/ConfigureServerFromFile.h>
+#include <osvr/Server/RegisterShutdownHandler.h>
+
 #define  LOG_TAG    "libgl2jni"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
-
-static void printGLString(const char *name, GLenum s) {
-    const char *v = (const char *) glGetString(s);
-    LOGI("GL %s = %s\n", name, v);
-}
-
-static void checkGlError(const char* op) {
-    for (GLint error = glGetError(); error; error = glGetError()) {
-        LOGI("after %s() glError (0x%x)\n", op, error);
-    }
-}
 
 static const char gVertexShader[] =
                 "uniform mat4 model;\n"
@@ -83,7 +75,37 @@ static const char gFragmentShader[] =
                 //"    gl_FragColor = texture2D(uTexture, texCoordinate);\n"
                 "}\n";
 
-GLuint loadShader(GLenum shaderType, const char* pSource) {
+static GLuint gProgram;
+static GLuint gvPositionHandle;
+static GLuint gvColorHandle;
+static GLuint gvTexCoordinateHandle;
+static GLuint guTextureUniformId;
+static GLuint gvProjectionUniformId;
+static GLuint gvViewUniformId;
+static GLuint gvModelUniformId;
+static GLuint gTextureID;
+static osvr::clientkit::DisplayConfig* gOSVRDisplayConfig;
+static osvr::clientkit::ClientContext* gClientContext;
+static osvr::server::ServerPtr gServer;
+static OSVR_ClientInterface gCamera = NULL;
+static int gReportNumber = 0;
+static OSVR_ImageBufferElement* gLastFrame = nullptr;
+static GLuint gLastFrameWidth = 0;
+static GLuint gLastFrameHeight = 0;
+static GLubyte* gTextureBuffer = nullptr;
+
+static void printGLString(const char *name, GLenum s) {
+    const char *v = (const char *) glGetString(s);
+    LOGI("GL %s = %s\n", name, v);
+}
+
+static void checkGlError(const char* op) {
+    for (GLint error = glGetError(); error; error = glGetError()) {
+        LOGI("after %s() glError (0x%x)\n", op, error);
+    }
+}
+
+static GLuint loadShader(GLenum shaderType, const char* pSource) {
     GLuint shader = glCreateShader(shaderType);
     if (shader) {
         glShaderSource(shader, 1, &pSource, NULL);
@@ -109,7 +131,7 @@ GLuint loadShader(GLenum shaderType, const char* pSource) {
     return shader;
 }
 
-GLuint createProgram(const char* pVertexSource, const char* pFragmentSource) {
+static GLuint createProgram(const char* pVertexSource, const char* pFragmentSource) {
     GLuint vertexShader = loadShader(GL_VERTEX_SHADER, pVertexSource);
     if (!vertexShader) {
         return 0;
@@ -149,20 +171,7 @@ GLuint createProgram(const char* pVertexSource, const char* pFragmentSource) {
     return program;
 }
 
-GLuint gProgram;
-GLuint gvPositionHandle;
-GLuint gvColorHandle;
-GLuint gvTexCoordinateHandle;
-GLuint guTextureUniformId;
-GLuint gvProjectionUniformId;
-GLuint gvViewUniformId;
-GLuint gvModelUniformId;
-GLuint gTextureID;
-osvr::clientkit::DisplayConfig* gOSVRDisplayConfig;
-osvr::clientkit::ClientContext* gClientContext;
-OSVR_ClientInterface gCamera = NULL;
-
-GLuint createTexture(GLuint width, GLuint height) {
+static GLuint createTexture(GLuint width, GLuint height) {
     GLuint ret;
     glGenTextures(1, &ret);
     checkGlError("glGenTextures");
@@ -193,7 +202,7 @@ GLuint createTexture(GLuint width, GLuint height) {
     return ret;
 }
 
-void updateTexture(GLuint width, GLuint height, GLubyte* data) {
+static void updateTexture(GLuint width, GLuint height, GLubyte* data) {
 
     glBindTexture(GL_TEXTURE_2D, gTextureID);
     checkGlError("glBindTexture");
@@ -208,59 +217,14 @@ void updateTexture(GLuint width, GLuint height, GLubyte* data) {
     checkGlError("glTexImage2D");
 }
 
-void checkReturnCode(OSVR_ReturnCode returnCode, const char* msg) {
+static void checkReturnCode(OSVR_ReturnCode returnCode, const char* msg) {
     if(returnCode != OSVR_RETURN_SUCCESS) {
         LOGI("[OSVR] OSVR method returned a failure: %s", msg);
         throw std::runtime_error(msg);
     }
 }
 
-OSVR_JointClientOpts createJointClientOpts()
-{
-    // @todo: dynamically get the file path, i.e. /data/data/com.osvr.android.gles2sample
-    // might need to pass it in via JNI from the java activity - not sure if there is an NDK
-    // API for it.
-    OSVR_JointClientOpts opts = osvrJointClientCreateOptions();
-
-    // This doesn't appear to work, even when setting LD_LIBRARY_PATH to
-    // /data/data/com.osvr.android.gles2sample/files and copying the plugins
-    // there. However, at least with this option I the init call succeeds
-//    checkReturnCode(osvrJointClientOptionsAutoloadPlugins(opts),
-//        "Auto-loading plugins...");
-
-    // these two plugin calls result in the init call failing.
-    // am I missing something?
-//    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
-//        "com_osvr_Multiserver"),
-//        "Loading multi-server");
-//
-    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
-        "com_osvr_android_sensorTracker"),
-        "Loading android sensor plugin");
-
-    checkReturnCode(osvrJointClientOptionsLoadPlugin(opts,
-        "com_osvr_android_jniImaging"),
-        "Loading android sensor plugin");
-    // this causes the init call to fail
-    // what is the path supposed to look like here?
-    // Should this be "$.display" or "\"display\""?
-    // Is it failing to read the LG_G4.json file?
-    // @todo try to set the entire display json here as a hard-coded string blob
-    checkReturnCode(osvrJointClientOptionsAddString(opts, "/display", "{\"meta\": { \"schemaVersion\": 1 }, \"hmd\": { \"device\": { \"vendor\": \"OSVR\", \"model\": \"HDK\", \"num_displays\": 1, \"Version\": \"1.1\", \"Note\": \"Settings are also good for HDK 1.0\" }, \"field_of_view\": { \"monocular_horizontal\": 90, \"monocular_vertical\": 101.25, \"overlap_percent\": 100, \"pitch_tilt\": 0 }, \"resolutions\": [ { \"width\": 2560, \"height\": 1440, \"video_inputs\": 1, \"display_mode\": \"horz_side_by_side\", \"swap_eyes\": 0 } ], \"distortion\": { \"k1_red\": 0, \"k1_green\": 0, \"k1_blue\": 0 }, \"rendering\": { \"right_roll\": 0, \"left_roll\": 0 }, \"eyes\": [ { \"center_proj_x\": 0.5, \"center_proj_y\": 0.5, \"rotate_180\": 0 }, { \"center_proj_x\": 0.5, \"center_proj_y\": 0.5, \"rotate_180\": 0 } ] } }"),
-        "Setting display");
-
-    // this seems to succeed when its the only action queued
-    checkReturnCode(osvrJointClientOptionsTriggerHardwareDetect(opts),
-        "Triggering hardware detect.");
-    return opts;
-}
-
-static int gReportNumber = 0;
-static OSVR_ImageBufferElement* gLastFrame = nullptr;
-GLuint gLastFrameWidth = 0;
-GLuint gLastFrameHeight = 0;
-static GLubyte* gTextureBuffer = nullptr;
-void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
+static void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
                      const OSVR_ImagingReport *report) {
 
     OSVR_ClientContext* ctx = (OSVR_ClientContext*)userdata;
@@ -275,7 +239,11 @@ void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
     gLastFrame = report->state.data;
 }
 
-bool setupOSVR() {
+static void handleServerShutdown() {
+    gServer->signalStop();
+}
+
+static bool setupOSVR() {
     try {
         // Is this necessary? Trying to make it easier for osvrJointClientKit
         // to find the plugins. This may not even be working as expected.
@@ -283,15 +251,12 @@ bool setupOSVR() {
         auto workingDirectory = boost::filesystem::current_path();
         LOGI("[OSVR] Current working directory: %s", workingDirectory.string().c_str());
 
-        OSVR_JointClientOpts opts = createJointClientOpts();
-        auto ctx = osvrJointClientInit("com.osvr.android.opengles2sample", opts);
+        std::string configName(osvr::server::getDefaultConfigFilename());
+        gServer = osvr::server::configureServerFromFile(configName);
+        osvr::server::registerShutdownHandler<&handleServerShutdown>();
+        gServer->start();
 
-        if (!ctx) {
-            LOGI("[OSVR] Could not create the joint client/server context.");
-            return false;
-        }
-
-        gClientContext = new osvr::clientkit::ClientContext(ctx);
+        gClientContext = new osvr::clientkit::ClientContext("com.osvr.android.examples.OSVROpenGL");
 
         // temporary workaround to DisplayConfig issue,
         // display sometimes fails waiting for the tree from the server.
@@ -346,7 +311,7 @@ bool setupOSVR() {
     }
 }
 
-bool setupGraphics(int width, int height) {
+static bool setupGraphics(int width, int height) {
     printGLString("Version", GL_VERSION);
     printGLString("Vendor", GL_VENDOR);
     printGLString("Renderer", GL_RENDERER);
@@ -388,7 +353,7 @@ bool setupGraphics(int width, int height) {
     return setupOSVR();
 }
 
-const GLfloat gTriangleColors[] = {
+static const GLfloat gTriangleColors[] = {
         // white
         1.0f, 1.0f, 1.0f, 1.0f,
         1.0f, 1.0f, 1.0f, 1.0f,
@@ -438,7 +403,7 @@ const GLfloat gTriangleColors[] = {
         1.0f, 0.0f, 1.0f, 1.0f
 };
 
-const GLfloat gTriangleTexCoordinates[] = {
+static const GLfloat gTriangleTexCoordinates[] = {
         // A cube face (letters are unique vertices)
         // A--B
         // |  |
@@ -497,7 +462,7 @@ const GLfloat gTriangleTexCoordinates[] = {
         1.0f, 0.0f, // D
 };
 
-const GLfloat gTriangleVertices[] = {
+static const GLfloat gTriangleVertices[] = {
         // A cube face (letters are unique vertices)
         // A--B
         // |  |
@@ -559,7 +524,7 @@ const GLfloat gTriangleVertices[] = {
 /**
  * Just the current frame in the display.
  */
-void renderFrame() {
+static void renderFrame() {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     checkGlError("glClearColor");
     glClear( GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
@@ -640,7 +605,7 @@ void renderFrame() {
     }
 }
 
-void stop() {
+static void stop() {
     LOGI("[OSVR] Shutting down...");
     if(gOSVRDisplayConfig != nullptr) {
         delete gOSVRDisplayConfig;
@@ -651,6 +616,10 @@ void stop() {
     if(gClientContext != nullptr) {
         delete gClientContext;
         gClientContext = nullptr;
+    }
+
+    if(gServer) {
+        gServer->stop();
     }
 }
 
