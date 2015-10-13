@@ -239,10 +239,6 @@ static void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
     gLastFrame = report->state.data;
 }
 
-static void handleServerShutdown() {
-    gServer->signalStop();
-}
-
 static bool setupOSVR() {
     try {
         // Is this necessary? Trying to make it easier for osvrJointClientKit
@@ -251,57 +247,71 @@ static bool setupOSVR() {
         auto workingDirectory = boost::filesystem::current_path();
         LOGI("[OSVR] Current working directory: %s", workingDirectory.string().c_str());
 
-        std::string configName(osvr::server::getDefaultConfigFilename());
-        gServer = osvr::server::configureServerFromFile(configName);
-        osvr::server::registerShutdownHandler<&handleServerShutdown>();
-        gServer->start();
+        // @todo separate OSVR setup from graphics setup.
+        // We sometimes get more than one onSurfaceChanged event, so these
+        // checks are to prevent multiple OSVR servers being setup.
+        if(!gServer) {
+            std::string configName(osvr::server::getDefaultConfigFilename());
+            LOGI("[OSVR] Configuring server from file %s", configName.c_str());
 
-        gClientContext = new osvr::clientkit::ClientContext("com.osvr.android.examples.OSVROpenGL");
+            gServer = osvr::server::configureServerFromFile(configName);
 
-        // temporary workaround to DisplayConfig issue,
-        // display sometimes fails waiting for the tree from the server.
-        for (int i = 0; i < 10000; i++) {
-            gClientContext->update();
+            LOGI("[OSVR] Starting server...");
+            gServer->start();
         }
 
-        if(!gClientContext->checkStatus()) {
-            LOGI("[OSVR] Client context reported bad status.");
-            return false;
-        }
+        if(!gClientContext) {
+            LOGI("[OSVR] Creating ClientContext...");
+            gClientContext = new osvr::clientkit::ClientContext(
+                    "com.osvr.android.examples.OSVROpenGL");
 
-        gOSVRDisplayConfig = new osvr::clientkit::DisplayConfig(*gClientContext);
-        if (!gOSVRDisplayConfig->valid()) {
-            LOGI("[OSVR] Could not get a display config (server probably not "
-                         "running or not behaving), exiting");
-            return false;
-        }
+            // temporary workaround to DisplayConfig issue,
+            // display sometimes fails waiting for the tree from the server.
+            LOGI("[OSVR] Calling update a few times...");
+            for (int i = 0; i < 10000; i++) {
+                gClientContext->update();
+            }
 
-        LOGI("[OSVR] Got a valid display config. Waiting for the display to fully start up, including "
-                     "receiving initial pose update...");
-        using clock = std::chrono::system_clock;
-        auto timeEnd = clock::now() + std::chrono::seconds(2);
+            if (!gClientContext->checkStatus()) {
+                LOGI("[OSVR] Client context reported bad status.");
+                return false;
+            }
 
-        while (clock::now() < timeEnd && !gOSVRDisplayConfig->checkStartup()) {
-            gClientContext->update();
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+            gOSVRDisplayConfig = new osvr::clientkit::DisplayConfig(*gClientContext);
+            if (!gOSVRDisplayConfig->valid()) {
+                LOGI("[OSVR] Could not get a display config (server probably not "
+                             "running or not behaving), exiting");
+                return false;
+            }
 
-        if(!gOSVRDisplayConfig->checkStartup()) {
-            LOGI("[OSVR] Timed out waiting for display to fully start up and receive the initial pose update.");
-            return false;
-        }
+            LOGI("[OSVR] Got a valid display config. Waiting for the display to fully start up, including "
+                         "receiving initial pose update...");
+            using clock = std::chrono::system_clock;
+            auto timeEnd = clock::now() + std::chrono::seconds(2);
 
-        LOGI("[OSVR] OK, display startup status is good!");
-        OSVR_ClientContext contextC = gClientContext->get();
-        if(OSVR_RETURN_SUCCESS != osvrClientGetInterface(contextC, "/camera", &gCamera)) {
-            LOGI("Error, could not get the camera interface at /camera.");
-            return false;
-        }
+            while (clock::now() < timeEnd && !gOSVRDisplayConfig->checkStartup()) {
+                gClientContext->update();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
 
-        // Register the imaging callback.
-        if(OSVR_RETURN_SUCCESS != osvrRegisterImagingCallback(gCamera, &imagingCallback, &contextC)) {
-            LOGI("Error, could not register image callback.");
-            return false;
+            if (!gOSVRDisplayConfig->checkStartup()) {
+                LOGI("[OSVR] Timed out waiting for display to fully start up and receive the initial pose update.");
+                return false;
+            }
+
+            LOGI("[OSVR] OK, display startup status is good!");
+            OSVR_ClientContext contextC = gClientContext->get();
+            if (OSVR_RETURN_SUCCESS != osvrClientGetInterface(contextC, "/camera", &gCamera)) {
+                LOGI("Error, could not get the camera interface at /camera.");
+                return false;
+            }
+
+            // Register the imaging callback.
+            if (OSVR_RETURN_SUCCESS !=
+                osvrRegisterImagingCallback(gCamera, &imagingCallback, &contextC)) {
+                LOGI("Error, could not register image callback.");
+                return false;
+            }
         }
 
         return true;
@@ -619,7 +629,9 @@ static void stop() {
     }
 
     if(gServer) {
+        LOGI("[OSVR] Shutting down server...");
         gServer->stop();
+        gServer = nullptr;
     }
 }
 
