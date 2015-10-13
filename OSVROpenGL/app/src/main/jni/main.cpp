@@ -630,7 +630,7 @@ static void stop() {
     if(gServer) {
         LOGI("[OSVR] Shutting down server...");
         gServer->stop();
-        gServer = nullptr;
+        gServer.reset();
     }
 }
 
