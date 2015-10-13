@@ -37,10 +37,10 @@ import java.util.zip.ZipFile;
 import android.content.ContextWrapper;
 import android.util.Log;
 
-public class OSVRPluginExtractor {
+public class OSVRFileExtractor {
     private final static String ZIP_FILTER = "assets";
     private final static int BUFSIZE = 100000;
-    private final static String LOGTAG = "OSVRPluginExtractor";
+    private final static String LOGTAG = "OSVRFileExtractor";
 
     private static void Log(String string) {
         Log.v(LOGTAG, string);
@@ -73,17 +73,17 @@ public class OSVRPluginExtractor {
     }
 
     /**
-     * Extract plugins from the apk zip file to the installed directory, if not
-     * already extracted. Call this prior to instantiating the joint client kit.
+     * Extract osvr files from the apk zip file (from assets dir) to the installed directory, if not
+     * already extracted. Call this prior to instantiating the server.
      * @param context Typically an Activity instance.
      */
-    public static void extractPlugins(ContextWrapper context) {
+    public static void extractFiles(ContextWrapper context) {
         extractAssets(context, false);
     }
 
     /**
      * Extract assets from the apk zip file to the installed app directory.
-     * Only copies plugins.
+     * Copies plugins, the config file, and displays.
      * @param context Typically an Activity instance.
      * @param worldReadable deprecated. Always use false.
      */
@@ -94,7 +94,7 @@ public class OSVRPluginExtractor {
             File zipFile = new File(context.getPackageCodePath());
             long zipLastModified = zipFile.lastModified();
             ZipFile zip = new ZipFile(context.getPackageCodePath());
-            Vector<ZipEntry> files = pluginsFilesFromZip(zip);
+            Vector<ZipEntry> files = osvrFilesFromZip(zip);
             int zipFilterLength = ZIP_FILTER.length();
 
             Enumeration entries = files.elements();
@@ -125,25 +125,26 @@ public class OSVRPluginExtractor {
     }
 
     /**
-     * Check if a plugin is actually an OSVR plugin. Currently just checks that
-     * "osvr-plugins-0" is part of the path. @todo make this more robust.
-     * @param pluginPath The full path of the plugin file.
-     * @return true, if the path is to an OSVR plugin, false otherwise
+     * Check if a file is actually an OSVR file. @todo make this more robust.
+     * @param filePath The full path of the file.
+     * @return true, if the path is to an OSVR file, false otherwise
      */
-    private static boolean isOSVRPlugin(String pluginPath) {
-        return pluginPath.contains("osvr-plugins-0");
+    private static boolean isOSVRFile(String filePath) {
+        return filePath.contains("osvr-plugins-0") ||
+                filePath.contains("displays") ||
+                filePath.contains("osvr_server_config.json");
     }
 
     /**
-     * Returns a list of all plugin files from the apk zip file.
+     * Returns a list of all OSVR files from the apk zip file.
      */
-    private static Vector<ZipEntry> pluginsFilesFromZip(ZipFile zip) {
+    private static Vector<ZipEntry> osvrFilesFromZip(ZipFile zip) {
         Vector<ZipEntry> list = new Vector<ZipEntry>();
         Enumeration entries = zip.entries();
         while (entries.hasMoreElements()) {
             ZipEntry entry = (ZipEntry) entries.nextElement();
             String entryName = entry.getName();
-            if(entryName.startsWith(ZIP_FILTER) && isOSVRPlugin(entryName)) {
+            if(entryName.startsWith(ZIP_FILTER) && isOSVRFile(entryName)) {
                 list.add(entry);
             }
         }

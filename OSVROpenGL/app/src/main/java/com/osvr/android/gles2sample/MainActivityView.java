@@ -136,11 +136,13 @@ class MainActivityView extends GLSurfaceView implements Camera.PreviewCallback {
 
     public MainActivityView(Context context) {
         super(context);
+        Log.i(TAG, "MainActivityView constructor with just context.");
         init(false, 0, 0);
     }
 
     public MainActivityView(Context context, boolean translucent, int depth, int stencil) {
         super(context);
+        Log.i(TAG, "MainActivityView constructor with translucent, depth, and stencil arguments.");
         init(translucent, depth, stencil);
     }
 
@@ -160,7 +162,7 @@ class MainActivityView extends GLSurfaceView implements Camera.PreviewCallback {
     }
 
     private void init(boolean translucent, int depth, int stencil) {
-
+        Log.i(TAG, "MainActivityView.init()");
         /* By default, GLSurfaceView() creates a RGB_565 opaque surface.
          * If we want a translucent one, we should change the surface's
          * format here, using PixelFormat.TRANSLUCENT for GL Surfaces

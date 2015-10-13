@@ -20,15 +20,10 @@
 package com.osvr.android.gles2sample;
 
 import android.app.Activity;
-import android.graphics.SurfaceTexture;
-import android.hardware.Camera;
 import android.os.Bundle;
 import android.util.Log;
 
-import com.osvr.android.jni.JNIBridge;
-import com.osvr.android.utils.OSVRPluginExtractor;
-
-import java.io.IOException;
+import com.osvr.android.utils.OSVRFileExtractor;
 
 
 public class MainActivity extends Activity {
@@ -37,8 +32,9 @@ public class MainActivity extends Activity {
     MainActivityView mView;
 
     @Override protected void onCreate(Bundle icicle) {
+        Log.i(TAG, "MainActivity: onCreate()");
         super.onCreate(icicle);
-        OSVRPluginExtractor.extractPlugins(this);
+        OSVRFileExtractor.extractFiles(this);
         mView = new MainActivityView(getApplication());
 	    setContentView(mView);
 
@@ -46,16 +42,19 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        Log.i(TAG, "MainActivity: onPause()");
         super.onPause();
         mView.onPause();
     }
 
     @Override protected void onResume() {
+        Log.i(TAG, "MainActivity: onResume()");
         super.onResume();
         mView.onResume();
     }
 
     @Override protected void onStop() {
+        Log.i(TAG, "MainActivity: onStop()");
         super.onStop();
         mView.onStop();
     }
