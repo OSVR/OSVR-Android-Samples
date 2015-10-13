@@ -240,8 +240,8 @@ static void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
 
 static bool setupOSVR() {
     try {
-        // Is this necessary? Trying to make it easier for osvrJointClientKit
-        // to find the plugins. This may not even be working as expected.
+        // On Android, the current working directory is added to the default plugin search path.
+        // it also helps the server find its configuration and display files.
         boost::filesystem::current_path("/data/data/com.osvr.android.gles2sample/files");
         auto workingDirectory = boost::filesystem::current_path();
         LOGI("[OSVR] Current working directory: %s", workingDirectory.string().c_str());
