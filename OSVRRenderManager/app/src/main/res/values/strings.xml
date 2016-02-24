@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">OSVR OpenGL ES 2.0 Sample</string>
+
+    <string name="action_settings">Settings</string>
+    <string name="main_activity">OSVR_GLES2_Sample</string>
+</resources>
