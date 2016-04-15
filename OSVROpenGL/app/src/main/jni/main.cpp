@@ -41,8 +41,7 @@
 #include <osvr/ClientKit/InterfaceC.h>
 #include <osvr/ClientKit/InterfaceCallbackC.h>
 #include <osvr/ClientKit/ImagingC.h>
-
-#include <osvr/Server/ConfigureServerFromFile.h>
+#include <osvr/ClientKit/ServerAutoStartC.h>
 
 #define  LOG_TAG    "libgl2jni"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
@@ -85,7 +84,6 @@ static GLuint gvModelUniformId;
 static GLuint gTextureID;
 static osvr::clientkit::DisplayConfig* gOSVRDisplayConfig;
 static osvr::clientkit::ClientContext* gClientContext;
-static osvr::server::ServerPtr gServer;
 static OSVR_ClientInterface gCamera = NULL;
 static int gReportNumber = 0;
 static OSVR_ImageBufferElement* gLastFrame = nullptr;
@@ -246,18 +244,8 @@ static bool setupOSVR() {
         auto workingDirectory = boost::filesystem::current_path();
         LOGI("[OSVR] Current working directory: %s", workingDirectory.string().c_str());
 
-        // @todo separate OSVR setup from graphics setup.
-        // We sometimes get more than one onSurfaceChanged event, so these
-        // checks are to prevent multiple OSVR servers being setup.
-        if(!gServer) {
-            std::string configName(osvr::server::getDefaultConfigFilename());
-            LOGI("[OSVR] Configuring server from file %s", configName.c_str());
-
-            gServer = osvr::server::configureServerFromFile(configName);
-
-            LOGI("[OSVR] Starting server...");
-            gServer->start();
-        }
+        // auto-start the server
+        osvrClientAttemptServerAutoStart();
 
         if(!gClientContext) {
             LOGI("[OSVR] Creating ClientContext...");
@@ -627,11 +615,7 @@ static void stop() {
         gClientContext = nullptr;
     }
 
-    if(gServer) {
-        LOGI("[OSVR] Shutting down server...");
-        gServer->stop();
-        gServer.reset();
-    }
+    osvrClientReleaseAutoStartedServer();
 }
 
 extern "C" {

@@ -83,6 +83,16 @@ LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\libosvrVRPNServer.so
 include $(PREBUILT_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE := com_osvr_android_jniImaging
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\osvr-plugins-0\libcom_osvr_android_jniImaging.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := com_osvr_android_sensorTracker
+LOCAL_SRC_FILES := ${OSVR_ANDROID}\lib\osvr-plugins-0\libcom_osvr_android_sensorTracker.so
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
 
 LOCAL_MODULE    := native-activity
 LOCAL_SRC_FILES := main.cpp

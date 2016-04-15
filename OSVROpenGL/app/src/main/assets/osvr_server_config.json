@@ -1,5 +1,9 @@
 /* The default config file, as used with the HDK, is fully auto-detected, so no configuration required. */
 /* See the JSON-Schema for server config or other samples to see possible options. */
 {
-    "display":  "displays/LG_G4.json"
+  "display": "displays/LG_G4.json",
+  "plugins": [
+    "com_osvr_android_jniImaging",
+    "com_osvr_android_sensorTracker"
+  ]
 }
