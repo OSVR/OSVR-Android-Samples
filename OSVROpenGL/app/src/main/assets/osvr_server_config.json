@@ -4,6 +4,24 @@
   "display": "displays/LG_G4.json",
   "plugins": [
     "com_osvr_android_jniImaging",
-    "com_osvr_android_sensorTracker"
-  ]
+    "com_osvr_android_sensorTracker",
+    "com_osvr_Multiserver"
+  ],
+  "externalDevices": {
+    "/myExternalDevice": {
+      "deviceName": "Tracker0",
+      "server": "192.168.56.1:3884",
+      "descriptor": {
+        "interfaces": {
+          "tracker": {},
+          "button": {},
+          "analog": {}
+        },
+        "Note": "can also provide a file path here, or this is the minimal"
+      }
+    }
+  },
+  "aliases": {
+    "/me/head": "/myExternalDevice/tracker/0"
+  }
 }

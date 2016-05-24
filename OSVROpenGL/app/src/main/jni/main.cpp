@@ -19,11 +19,10 @@
  */
 
 //BEGIN_INCLUDE(all)
-#include <jni.h>
-#include <android/log.h>
 
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <chrono>
 #include <thread>
 
@@ -32,590 +31,631 @@
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
-#include <osvr/ClientKit/Context.h>
-#include <osvr/ClientKit/Interface.h>
-#include <osvr/ClientKit/InterfaceStateC.h>
-#include <osvr/ClientKit/Display.h>
-#include <osvr/JointClientKit/JointClientKitC.h>
 #include <osvr/ClientKit/ContextC.h>
 #include <osvr/ClientKit/InterfaceC.h>
+#include <osvr/ClientKit/InterfaceStateC.h>
+#include <osvr/ClientKit/DisplayC.h>
 #include <osvr/ClientKit/InterfaceCallbackC.h>
 #include <osvr/ClientKit/ImagingC.h>
 #include <osvr/ClientKit/ServerAutoStartC.h>
+
+#include <jni.h>
+#include <android/log.h>
 
 #define  LOG_TAG    "libgl2jni"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
 
-static const char gVertexShader[] =
-                "uniform mat4 model;\n"
-                "uniform mat4 view;\n"
-                "uniform mat4 projection;\n"
-                "attribute vec4 vPosition;\n"
-                "attribute vec4 vColor;\n"
-                "attribute vec2 vTexCoordinate;\n"
-                "varying vec2 texCoordinate;\n"
-                "varying vec4 fragmentColor;\n"
-                "void main() {\n"
-                "  gl_Position = projection * view * model * vPosition;\n"
-                "  fragmentColor = vColor;\n"
-                "  texCoordinate = vTexCoordinate;\n"
-                "}\n";
+namespace OSVROpenGL {
+    static const char gVertexShader[] =
+            "uniform mat4 model;\n"
+                    "uniform mat4 view;\n"
+                    "uniform mat4 projection;\n"
+                    "attribute vec4 vPosition;\n"
+                    "attribute vec4 vColor;\n"
+                    "attribute vec2 vTexCoordinate;\n"
+                    "varying vec2 texCoordinate;\n"
+                    "varying vec4 fragmentColor;\n"
+                    "void main() {\n"
+                    "  gl_Position = projection * view * model * vPosition;\n"
+                    "  fragmentColor = vColor;\n"
+                    "  texCoordinate = vTexCoordinate;\n"
+                    "}\n";
 
-static const char gFragmentShader[] =
-        "precision mediump float;\n"
-                "uniform sampler2D uTexture;\n"
-                "varying vec2 texCoordinate;\n"
-                "varying vec4 fragmentColor;\n"
-                "void main()\n"
-                "{\n"
-                "    gl_FragColor = fragmentColor * texture2D(uTexture, texCoordinate);\n"
-                //"    gl_FragColor = texture2D(uTexture, texCoordinate);\n"
-                "}\n";
+    static const char gFragmentShader[] =
+            "precision mediump float;\n"
+                    "uniform sampler2D uTexture;\n"
+                    "varying vec2 texCoordinate;\n"
+                    "varying vec4 fragmentColor;\n"
+                    "void main()\n"
+                    "{\n"
+                    "    gl_FragColor = fragmentColor * texture2D(uTexture, texCoordinate);\n"
+                    //"    gl_FragColor = texture2D(uTexture, texCoordinate);\n"
+                    "}\n";
 
-static GLuint gProgram;
-static GLuint gvPositionHandle;
-static GLuint gvColorHandle;
-static GLuint gvTexCoordinateHandle;
-static GLuint guTextureUniformId;
-static GLuint gvProjectionUniformId;
-static GLuint gvViewUniformId;
-static GLuint gvModelUniformId;
-static GLuint gTextureID;
-static osvr::clientkit::DisplayConfig* gOSVRDisplayConfig;
-static osvr::clientkit::ClientContext* gClientContext;
-static OSVR_ClientInterface gCamera = NULL;
-static int gReportNumber = 0;
-static OSVR_ImageBufferElement* gLastFrame = nullptr;
-static GLuint gLastFrameWidth = 0;
-static GLuint gLastFrameHeight = 0;
-static GLubyte* gTextureBuffer = nullptr;
+    static GLuint gProgram;
+    static GLuint gvPositionHandle;
+    static GLuint gvColorHandle;
+    static GLuint gvTexCoordinateHandle;
+    static GLuint guTextureUniformId;
+    static GLuint gvProjectionUniformId;
+    static GLuint gvViewUniformId;
+    static GLuint gvModelUniformId;
+    static GLuint gTextureID;
+    static OSVR_DisplayConfig gOSVRDisplayConfig;
+    static OSVR_ClientContext gClientContext;
+    static OSVR_ClientInterface gCamera = NULL;
+    static int gReportNumber = 0;
+    static OSVR_ImageBufferElement *gLastFrame = nullptr;
+    static GLuint gLastFrameWidth = 0;
+    static GLuint gLastFrameHeight = 0;
+    static GLubyte *gTextureBuffer = nullptr;
 
-static void printGLString(const char *name, GLenum s) {
-    const char *v = (const char *) glGetString(s);
-    LOGI("GL %s = %s\n", name, v);
-}
-
-static void checkGlError(const char* op) {
-    for (GLint error = glGetError(); error; error = glGetError()) {
-        LOGI("after %s() glError (0x%x)\n", op, error);
+    static void printGLString(const char *name, GLenum s) {
+        const char *v = (const char *) glGetString(s);
+        LOGI("GL %s = %s\n", name, v);
     }
-}
 
-static GLuint loadShader(GLenum shaderType, const char* pSource) {
-    GLuint shader = glCreateShader(shaderType);
-    if (shader) {
-        glShaderSource(shader, 1, &pSource, NULL);
-        glCompileShader(shader);
-        GLint compiled = 0;
-        glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
-        if (!compiled) {
-            GLint infoLen = 0;
-            glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
-            if (infoLen) {
-                char* buf = (char*) malloc(infoLen);
-                if (buf) {
-                    glGetShaderInfoLog(shader, infoLen, NULL, buf);
-                    LOGE("Could not compile shader %d:\n%s\n",
-                         shaderType, buf);
-                    free(buf);
-                }
-                glDeleteShader(shader);
-                shader = 0;
-            }
+    static void checkGlError(const char *op) {
+        for (GLint error = glGetError(); error; error = glGetError()) {
+            LOGI("after %s() glError (0x%x)\n", op, error);
         }
     }
-    return shader;
-}
 
-static GLuint createProgram(const char* pVertexSource, const char* pFragmentSource) {
-    GLuint vertexShader = loadShader(GL_VERTEX_SHADER, pVertexSource);
-    if (!vertexShader) {
-        return 0;
-    }
-
-    GLuint pixelShader = loadShader(GL_FRAGMENT_SHADER, pFragmentSource);
-    if (!pixelShader) {
-        return 0;
-    }
-
-    GLuint program = glCreateProgram();
-    if (program) {
-        glAttachShader(program, vertexShader);
-        checkGlError("glAttachShader");
-
-        glAttachShader(program, pixelShader);
-        checkGlError("glAttachShader");
-
-        glLinkProgram(program);
-        GLint linkStatus = GL_FALSE;
-        glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
-        if (linkStatus != GL_TRUE) {
-            GLint bufLength = 0;
-            glGetProgramiv(program, GL_INFO_LOG_LENGTH, &bufLength);
-            if (bufLength) {
-                char* buf = (char*) malloc(bufLength);
-                if (buf) {
-                    glGetProgramInfoLog(program, bufLength, NULL, buf);
-                    LOGE("Could not link program:\n%s\n", buf);
-                    free(buf);
+    static GLuint loadShader(GLenum shaderType, const char *pSource) {
+        GLuint shader = glCreateShader(shaderType);
+        if (shader) {
+            glShaderSource(shader, 1, &pSource, NULL);
+            glCompileShader(shader);
+            GLint compiled = 0;
+            glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+            if (!compiled) {
+                GLint infoLen = 0;
+                glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
+                if (infoLen) {
+                    char *buf = (char *) malloc(infoLen);
+                    if (buf) {
+                        glGetShaderInfoLog(shader, infoLen, NULL, buf);
+                        LOGE("Could not compile shader %d:\n%s\n",
+                             shaderType, buf);
+                        free(buf);
+                    }
+                    glDeleteShader(shader);
+                    shader = 0;
                 }
             }
-            glDeleteProgram(program);
-            program = 0;
         }
+        return shader;
     }
-    return program;
-}
 
-static GLuint createTexture(GLuint width, GLuint height) {
-    GLuint ret;
-    glGenTextures(1, &ret);
-    checkGlError("glGenTextures");
+    static GLuint createProgram(const char *pVertexSource, const char *pFragmentSource) {
+        GLuint vertexShader = loadShader(GL_VERTEX_SHADER, pVertexSource);
+        if (!vertexShader) {
+            return 0;
+        }
 
-    glBindTexture(GL_TEXTURE_2D, ret);
-    checkGlError("glBindTexture");
+        GLuint pixelShader = loadShader(GL_FRAGMENT_SHADER, pFragmentSource);
+        if (!pixelShader) {
+            return 0;
+        }
 
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        GLuint program = glCreateProgram();
+        if (program) {
+            glAttachShader(program, vertexShader);
+            checkGlError("glAttachShader");
+
+            glAttachShader(program, pixelShader);
+            checkGlError("glAttachShader");
+
+            glLinkProgram(program);
+            GLint linkStatus = GL_FALSE;
+            glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
+            if (linkStatus != GL_TRUE) {
+                GLint bufLength = 0;
+                glGetProgramiv(program, GL_INFO_LOG_LENGTH, &bufLength);
+                if (bufLength) {
+                    char *buf = (char *) malloc(bufLength);
+                    if (buf) {
+                        glGetProgramInfoLog(program, bufLength, NULL, buf);
+                        LOGE("Could not link program:\n%s\n", buf);
+                        free(buf);
+                    }
+                }
+                glDeleteProgram(program);
+                program = 0;
+            }
+        }
+        return program;
+    }
+
+    static GLuint createTexture(GLuint width, GLuint height) {
+        GLuint ret;
+        glGenTextures(1, &ret);
+        checkGlError("glGenTextures");
+
+        glBindTexture(GL_TEXTURE_2D, ret);
+        checkGlError("glBindTexture");
+
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
 //    // DEBUG CODE - should be passing null here, but then texture is always black.
-    GLubyte *dummyBuffer = new GLubyte[width * height * 4];
-    for(GLuint i = 0; i < width * height * 4; i++) {
-        dummyBuffer[i] = (i % 4 ? 100 : 255);
-    }
-
-    // This dummy texture successfully makes it into the texture and renders, but subsequent
-    // calls to glTexSubImage2D don't appear to do anything.
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, dummyBuffer);
-    checkGlError("glTexImage2D");
-    delete[] dummyBuffer;
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    checkGlError("glTexParameteri");
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    checkGlError("glTexParameteri");
-    return ret;
-}
-
-static void updateTexture(GLuint width, GLuint height, GLubyte* data) {
-
-    glBindTexture(GL_TEXTURE_2D, gTextureID);
-    checkGlError("glBindTexture");
-
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-
-    // @todo use glTexSubImage2D to be faster here, but add check to make sure height/width are the same.
-    //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    //checkGlError("glTexSubImage2D");
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    checkGlError("glTexImage2D");
-}
-
-static void checkReturnCode(OSVR_ReturnCode returnCode, const char* msg) {
-    if(returnCode != OSVR_RETURN_SUCCESS) {
-        LOGI("[OSVR] OSVR method returned a failure: %s", msg);
-        throw std::runtime_error(msg);
-    }
-}
-
-static void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
-                     const OSVR_ImagingReport *report) {
-
-    OSVR_ClientContext* ctx = (OSVR_ClientContext*)userdata;
-
-    gReportNumber++;
-    GLuint width = report->state.metadata.width;
-    GLuint height = report->state.metadata.height;
-    gLastFrameWidth = width;
-    gLastFrameHeight = height;
-    GLuint size = width * height * 4;
-
-    gLastFrame = report->state.data;
-}
-
-static bool setupOSVR() {
-    try {
-        // On Android, the current working directory is added to the default plugin search path.
-        // it also helps the server find its configuration and display files.
-        boost::filesystem::current_path("/data/data/com.osvr.android.gles2sample/files");
-        auto workingDirectory = boost::filesystem::current_path();
-        LOGI("[OSVR] Current working directory: %s", workingDirectory.string().c_str());
-
-        // auto-start the server
-        osvrClientAttemptServerAutoStart();
-
-        if(!gClientContext) {
-            LOGI("[OSVR] Creating ClientContext...");
-            gClientContext = new osvr::clientkit::ClientContext(
-                    "com.osvr.android.examples.OSVROpenGL");
-
-            // temporary workaround to DisplayConfig issue,
-            // display sometimes fails waiting for the tree from the server.
-            LOGI("[OSVR] Calling update a few times...");
-            for (int i = 0; i < 10000; i++) {
-                gClientContext->update();
-            }
-
-            if (!gClientContext->checkStatus()) {
-                LOGI("[OSVR] Client context reported bad status.");
-                return false;
-            }
-
-            gOSVRDisplayConfig = new osvr::clientkit::DisplayConfig(*gClientContext);
-            if (!gOSVRDisplayConfig->valid()) {
-                LOGI("[OSVR] Could not get a display config (server probably not "
-                             "running or not behaving), exiting");
-                return false;
-            }
-
-            LOGI("[OSVR] Got a valid display config. Waiting for the display to fully start up, including "
-                         "receiving initial pose update...");
-            using clock = std::chrono::system_clock;
-            auto timeEnd = clock::now() + std::chrono::seconds(2);
-
-            while (clock::now() < timeEnd && !gOSVRDisplayConfig->checkStartup()) {
-                gClientContext->update();
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-
-            if (!gOSVRDisplayConfig->checkStartup()) {
-                LOGI("[OSVR] Timed out waiting for display to fully start up and receive the initial pose update.");
-                return false;
-            }
-
-            LOGI("[OSVR] OK, display startup status is good!");
-            OSVR_ClientContext contextC = gClientContext->get();
-            if (OSVR_RETURN_SUCCESS != osvrClientGetInterface(contextC, "/camera", &gCamera)) {
-                LOGI("Error, could not get the camera interface at /camera.");
-                return false;
-            }
-
-            // Register the imaging callback.
-            if (OSVR_RETURN_SUCCESS !=
-                osvrRegisterImagingCallback(gCamera, &imagingCallback, &contextC)) {
-                LOGI("Error, could not register image callback.");
-                return false;
-            }
+        GLubyte *dummyBuffer = new GLubyte[width * height * 4];
+        for (GLuint i = 0; i < width * height * 4; i++) {
+            dummyBuffer[i] = (i % 4 ? 100 : 255);
         }
 
-        return true;
-    } catch(const std::runtime_error &ex) {
-        LOGI("[OSVR] OSVR initialization failed: %s", ex.what());
-        return false;
+        // This dummy texture successfully makes it into the texture and renders, but subsequent
+        // calls to glTexSubImage2D don't appear to do anything.
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                     dummyBuffer);
+        checkGlError("glTexImage2D");
+        delete[] dummyBuffer;
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        checkGlError("glTexParameteri");
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        checkGlError("glTexParameteri");
+        return ret;
     }
-}
 
-static bool setupGraphics(int width, int height) {
-    printGLString("Version", GL_VERSION);
-    printGLString("Vendor", GL_VENDOR);
-    printGLString("Renderer", GL_RENDERER);
-    printGLString("Extensions", GL_EXTENSIONS);
+    static void updateTexture(GLuint width, GLuint height, GLubyte *data) {
 
-    LOGI("setupGraphics(%d, %d)", width, height);
-    gProgram = createProgram(gVertexShader, gFragmentShader);
-    if (!gProgram) {
-        LOGE("Could not create program.");
-        return false;
+        glBindTexture(GL_TEXTURE_2D, gTextureID);
+        checkGlError("glBindTexture");
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
+        // @todo use glTexSubImage2D to be faster here, but add check to make sure height/width are the same.
+        //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        //checkGlError("glTexSubImage2D");
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        checkGlError("glTexImage2D");
     }
-    gvPositionHandle = glGetAttribLocation(gProgram, "vPosition");
-    checkGlError("glGetAttribLocation");
-    LOGI("glGetAttribLocation(\"vPosition\") = %d\n", gvPositionHandle);
 
-    gvColorHandle = glGetAttribLocation(gProgram, "vColor");
-    checkGlError("glGetAttribLocation");
-    LOGI("glGetAttribLocation(\"vColor\") = %d\n", gvColorHandle);
+    static void checkReturnCode(OSVR_ReturnCode returnCode, const char *msg) {
+        if (returnCode != OSVR_RETURN_SUCCESS) {
+            LOGI("[OSVR] OSVR method returned a failure: %s", msg);
+            throw std::runtime_error(msg);
+        }
+    }
 
-    gvTexCoordinateHandle = glGetAttribLocation(gProgram, "vTexCoordinate");
-    checkGlError("glGetAttribLocation");
-    LOGI("glGetAttribLocation(\"vTexCoordinate\") = %d\n", gvTexCoordinateHandle);
+    static void imagingCallback(void *userdata, const OSVR_TimeValue *timestamp,
+                                const OSVR_ImagingReport *report) {
 
-    gvProjectionUniformId = glGetUniformLocation(gProgram, "projection");
-    gvViewUniformId = glGetUniformLocation(gProgram, "view");
-    gvModelUniformId = glGetUniformLocation(gProgram, "model");
-    guTextureUniformId = glGetUniformLocation(gProgram, "uTexture");
+        OSVR_ClientContext *ctx = (OSVR_ClientContext *) userdata;
 
-    glViewport(0, 0, width, height);
-    checkGlError("glViewport");
+        gReportNumber++;
+        GLuint width = report->state.metadata.width;
+        GLuint height = report->state.metadata.height;
+        gLastFrameWidth = width;
+        gLastFrameHeight = height;
+        GLuint size = width * height * 4;
 
-    glDisable(GL_CULL_FACE);
+        gLastFrame = report->state.data;
+    }
 
-    // @todo can we resize the texture after it has been created?
-    // if not, we may have to delete the dummy one and create a new one after
-    // the first imaging report.
-    LOGI("Creating texture... here we go!");
-    gTextureID = createTexture(width, height);
-    return setupOSVR();
-}
+    static bool setupOSVR() {
+        OSVR_ReturnCode rc = 0;
+        try {
+            // On Android, the current working directory is added to the default plugin search path.
+            // it also helps the server find its configuration and display files.
+            boost::filesystem::current_path("/data/data/com.osvr.android.gles2sample/files");
+            auto workingDirectory = boost::filesystem::current_path();
+            LOGI("[OSVR] Current working directory: %s", workingDirectory.string().c_str());
 
-static const GLfloat gTriangleColors[] = {
-        // white
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
+            // auto-start the server
+            osvrClientAttemptServerAutoStart();
 
-        // green
-        0.0f, 0.75f, 0.0f, 1.0f,
-        0.0f, 0.75f, 0.0f, 1.0f,
-        0.0f, 1.0f, 0.0f, 1.0f,
-        0.0f, 0.75f, 0.0f, 1.0f,
-        0.0f, 1.0f, 0.0f, 1.0f,
-        0.0f, 1.0f, 0.0f, 1.0f,
+            if (!gClientContext) {
+                LOGI("[OSVR] Creating ClientContext...");
+                gClientContext = osvrClientInit("com.osvr.android.examples.OSVROpenGL", 0);
+                if (!gClientContext) {
+                    LOGI("[OSVR] could not create client context");
+                    return false;
+                }
 
-        // blue
-        0.0f, 0.0f, 0.75f, 1.0f,
-        0.0f, 0.0f, 0.75f, 1.0f,
-        0.0f, 0.0f, 1.0f, 1.0f,
-        0.0f, 0.0f, 0.75f, 1.0f,
-        0.0f, 0.0f, 1.0f, 1.0f,
-        0.0f, 0.0f, 1.0f, 1.0f,
+                // temporary workaround to DisplayConfig issue,
+                // display sometimes fails waiting for the tree from the server.
+                LOGI("[OSVR] Calling update a few times...");
+                for (int i = 0; i < 10000; i++) {
+                    rc = osvrClientUpdate(gClientContext);
+                    if (rc != OSVR_RETURN_SUCCESS) {
+                        LOGI("[OSVR] Error while updating client context.");
+                        return false;
+                    }
+                }
 
-        // green/purple
-        0.0f, 0.75f, 0.75f, 1.0f,
-        0.0f, 0.75f, 0.75f, 1.0f,
-        0.0f, 1.0f, 1.0f, 1.0f,
-        0.0f, 0.75f, 0.75f, 1.0f,
-        0.0f, 1.0f, 1.0f, 1.0f,
-        0.0f, 1.0f, 1.0f, 1.0f,
 
-        // red/green
-        0.75f, 0.75f, 0.0f, 1.0f,
-        0.75f, 0.75f, 0.0f, 1.0f,
-        1.0f, 1.0f, 0.0f, 1.0f,
-        0.75f, 0.75f, 0.0f, 1.0f,
-        1.0f, 1.0f, 0.0f, 1.0f,
-        1.0f, 1.0f, 0.0f, 1.0f,
+                rc = osvrClientCheckStatus(gClientContext);
+                if (rc != OSVR_RETURN_SUCCESS) {
+                    LOGI("[OSVR] Client context reported bad status.");
+                    return false;
+                }
 
-        // red/blue
-        0.75f, 0.0f, 0.75f, 1.0f,
-        0.75f, 0.0f, 0.75f, 1.0f,
-        1.0f, 0.0f, 1.0f, 1.0f,
-        0.75f, 0.0f, 0.75f, 1.0f,
-        1.0f, 0.0f, 1.0f, 1.0f,
-        1.0f, 0.0f, 1.0f, 1.0f
-};
+                rc = osvrClientGetDisplay(gClientContext, &gOSVRDisplayConfig);
+                if (rc != OSVR_RETURN_SUCCESS) {
+                    LOGI("[OSVR] Could not get a display config (server probably not "
+                                 "running or not behaving), exiting");
+                    return false;
+                }
 
-static const GLfloat gTriangleTexCoordinates[] = {
-        // A cube face (letters are unique vertices)
-        // A--B
-        // |  |
-        // D--C
+                LOGI("[OSVR] Got a valid display config. Waiting for the display to fully start up, including "
+                             "receiving initial pose update...");
+                using clock = std::chrono::system_clock;
+                auto timeEnd = clock::now() + std::chrono::seconds(2);
 
-        // As two triangles (clockwise)
-        // A B D
-        // B C D
+                int numTries = 0;
+                while (clock::now() < timeEnd &&// && !gOSVRDisplayConfig->checkStartup()) {
+                //while (numTries++ < 100000 &&
+                       OSVR_RETURN_SUCCESS != osvrClientCheckDisplayStartup(gOSVRDisplayConfig)) {
+                    osvrClientUpdate(gClientContext);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
 
-        // white
-        1.0f, 0.0f, // A
-        1.0f, 1.0f, // B
-        0.0f, 0.0f, // D
-        1.0f, 1.0f, // B
-        0.0f, 1.0f, // C
-        0.0f, 0.0f, // D
+                //if (!gOSVRDisplayConfig->checkStartup()) {
+                if (OSVR_RETURN_SUCCESS != osvrClientCheckDisplayStartup(gOSVRDisplayConfig)) {
+                    LOGI("[OSVR] Timed out waiting for display to fully start up and receive the initial pose update.");
+                    return false;
+                }
 
-        // green
-        1.0f, 0.0f, // A
-        1.0f, 1.0f, // B
-        0.0f, 0.0f, // D
-        1.0f, 1.0f, // B
-        0.0f, 1.0f, // C
-        0.0f, 0.0f, // D
+                LOGI("[OSVR] OK, display startup status is good!");
+                //OSVR_ClientContext contextC = gClientContext->get();
+                //if (OSVR_RETURN_SUCCESS != osvrClientGetInterface(contextC, "/camera", &gCamera)) {
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/camera", &gCamera)) {
+                    LOGI("Error, could not get the camera interface at /camera.");
+                    return false;
+                }
 
-        // blue
-        1.0f, 1.0f, // A
-        0.0f, 1.0f, // B
-        1.0f, 0.0f, // D
-        0.0f, 1.0f, // B
-        0.0f, 0.0f, // C
-        1.0f, 0.0f, // D
+                // Register the imaging callback.
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterImagingCallback(gCamera, &imagingCallback, &gClientContext)) {
+                    LOGI("Error, could not register image callback.");
+                    return false;
+                }
+            }
 
-        // blue-green
-        1.0f, 0.0f, // A
-        1.0f, 1.0f, // B
-        0.0f, 0.0f, // D
-        1.0f, 1.0f, // B
-        0.0f, 1.0f, // C
-        0.0f, 0.0f, // D
+            return true;
+        } catch (const std::runtime_error &ex) {
+            LOGI("[OSVR] OSVR initialization failed: %s", ex.what());
+            return false;
+        }
+    }
 
-        // yellow
-        0.0f, 0.0f, // A
-        1.0f, 0.0f, // B
-        0.0f, 1.0f, // D
-        1.0f, 0.0f, // B
-        1.0f, 1.0f, // C
-        0.0f, 1.0f, // D
+    static bool setupGraphics(int width, int height) {
+        printGLString("Version", GL_VERSION);
+        printGLString("Vendor", GL_VENDOR);
+        printGLString("Renderer", GL_RENDERER);
+        printGLString("Extensions", GL_EXTENSIONS);
 
-        // purple/magenta
-        1.0f, 1.0f, // A
-        0.0f, 1.0f, // B
-        1.0f, 0.0f, // D
-        0.0f, 1.0f, // B
-        0.0f, 0.0f, // C
-        1.0f, 0.0f, // D
-};
+        LOGI("setupGraphics(%d, %d)", width, height);
+        gProgram = createProgram(gVertexShader, gFragmentShader);
+        if (!gProgram) {
+            LOGE("Could not create program.");
+            return false;
+        }
+        gvPositionHandle = glGetAttribLocation(gProgram, "vPosition");
+        checkGlError("glGetAttribLocation");
+        LOGI("glGetAttribLocation(\"vPosition\") = %d\n", gvPositionHandle);
 
-static const GLfloat gTriangleVertices[] = {
-        // A cube face (letters are unique vertices)
-        // A--B
-        // |  |
-        // D--C
+        gvColorHandle = glGetAttribLocation(gProgram, "vColor");
+        checkGlError("glGetAttribLocation");
+        LOGI("glGetAttribLocation(\"vColor\") = %d\n", gvColorHandle);
 
-        // As two triangles (clockwise)
-        // A B D
-        // B C D
+        gvTexCoordinateHandle = glGetAttribLocation(gProgram, "vTexCoordinate");
+        checkGlError("glGetAttribLocation");
+        LOGI("glGetAttribLocation(\"vTexCoordinate\") = %d\n", gvTexCoordinateHandle);
 
-        //glNormal3f(0.0, 0.0, -1.0);
-        1.0f, 1.0f, -1.0f, // A
-        1.0f, -1.0f, -1.0f, // B
-        -1.0f, 1.0f, -1.0f, // D
-        1.0f, -1.0f, -1.0f, // B
-        -1.0f, -1.0f, -1.0f, // C
-        -1.0f, 1.0f, -1.0f, // D
+        gvProjectionUniformId = glGetUniformLocation(gProgram, "projection");
+        gvViewUniformId = glGetUniformLocation(gProgram, "view");
+        gvModelUniformId = glGetUniformLocation(gProgram, "model");
+        guTextureUniformId = glGetUniformLocation(gProgram, "uTexture");
 
-        //glNormal3f(0.0, 0.0, 1.0);
-        -1.0f, 1.0f, 1.0f, // A
-        -1.0f, -1.0f, 1.0f, // B
-        1.0f, 1.0f, 1.0f, // D
-        -1.0f, -1.0f, 1.0f, // B
-        1.0f, -1.0f, 1.0f, // C
-        1.0f, 1.0f, 1.0f, // D
+        glViewport(0, 0, width, height);
+        checkGlError("glViewport");
+
+        glDisable(GL_CULL_FACE);
+
+        // @todo can we resize the texture after it has been created?
+        // if not, we may have to delete the dummy one and create a new one after
+        // the first imaging report.
+        LOGI("Creating texture... here we go!");
+        gTextureID = createTexture(width, height);
+        return setupOSVR();
+    }
+
+    static const GLfloat gTriangleColors[] = {
+            // white
+            1.0f, 1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f, 1.0f,
+
+            // green
+            0.0f, 0.75f, 0.0f, 1.0f,
+            0.0f, 0.75f, 0.0f, 1.0f,
+            0.0f, 1.0f, 0.0f, 1.0f,
+            0.0f, 0.75f, 0.0f, 1.0f,
+            0.0f, 1.0f, 0.0f, 1.0f,
+            0.0f, 1.0f, 0.0f, 1.0f,
+
+            // blue
+            0.0f, 0.0f, 0.75f, 1.0f,
+            0.0f, 0.0f, 0.75f, 1.0f,
+            0.0f, 0.0f, 1.0f, 1.0f,
+            0.0f, 0.0f, 0.75f, 1.0f,
+            0.0f, 0.0f, 1.0f, 1.0f,
+            0.0f, 0.0f, 1.0f, 1.0f,
+
+            // green/purple
+            0.0f, 0.75f, 0.75f, 1.0f,
+            0.0f, 0.75f, 0.75f, 1.0f,
+            0.0f, 1.0f, 1.0f, 1.0f,
+            0.0f, 0.75f, 0.75f, 1.0f,
+            0.0f, 1.0f, 1.0f, 1.0f,
+            0.0f, 1.0f, 1.0f, 1.0f,
+
+            // red/green
+            0.75f, 0.75f, 0.0f, 1.0f,
+            0.75f, 0.75f, 0.0f, 1.0f,
+            1.0f, 1.0f, 0.0f, 1.0f,
+            0.75f, 0.75f, 0.0f, 1.0f,
+            1.0f, 1.0f, 0.0f, 1.0f,
+            1.0f, 1.0f, 0.0f, 1.0f,
+
+            // red/blue
+            0.75f, 0.0f, 0.75f, 1.0f,
+            0.75f, 0.0f, 0.75f, 1.0f,
+            1.0f, 0.0f, 1.0f, 1.0f,
+            0.75f, 0.0f, 0.75f, 1.0f,
+            1.0f, 0.0f, 1.0f, 1.0f,
+            1.0f, 0.0f, 1.0f, 1.0f
+    };
+
+    static const GLfloat gTriangleTexCoordinates[] = {
+            // A cube face (letters are unique vertices)
+            // A--B
+            // |  |
+            // D--C
+
+            // As two triangles (clockwise)
+            // A B D
+            // B C D
+
+            // white
+            1.0f, 0.0f, // A
+            1.0f, 1.0f, // B
+            0.0f, 0.0f, // D
+            1.0f, 1.0f, // B
+            0.0f, 1.0f, // C
+            0.0f, 0.0f, // D
+
+            // green
+            1.0f, 0.0f, // A
+            1.0f, 1.0f, // B
+            0.0f, 0.0f, // D
+            1.0f, 1.0f, // B
+            0.0f, 1.0f, // C
+            0.0f, 0.0f, // D
+
+            // blue
+            1.0f, 1.0f, // A
+            0.0f, 1.0f, // B
+            1.0f, 0.0f, // D
+            0.0f, 1.0f, // B
+            0.0f, 0.0f, // C
+            1.0f, 0.0f, // D
+
+            // blue-green
+            1.0f, 0.0f, // A
+            1.0f, 1.0f, // B
+            0.0f, 0.0f, // D
+            1.0f, 1.0f, // B
+            0.0f, 1.0f, // C
+            0.0f, 0.0f, // D
+
+            // yellow
+            0.0f, 0.0f, // A
+            1.0f, 0.0f, // B
+            0.0f, 1.0f, // D
+            1.0f, 0.0f, // B
+            1.0f, 1.0f, // C
+            0.0f, 1.0f, // D
+
+            // purple/magenta
+            1.0f, 1.0f, // A
+            0.0f, 1.0f, // B
+            1.0f, 0.0f, // D
+            0.0f, 1.0f, // B
+            0.0f, 0.0f, // C
+            1.0f, 0.0f, // D
+    };
+
+    static const GLfloat gTriangleVertices[] = {
+            // A cube face (letters are unique vertices)
+            // A--B
+            // |  |
+            // D--C
+
+            // As two triangles (clockwise)
+            // A B D
+            // B C D
+
+            //glNormal3f(0.0, 0.0, -1.0);
+            1.0f, 1.0f, -1.0f, // A
+            1.0f, -1.0f, -1.0f, // B
+            -1.0f, 1.0f, -1.0f, // D
+            1.0f, -1.0f, -1.0f, // B
+            -1.0f, -1.0f, -1.0f, // C
+            -1.0f, 1.0f, -1.0f, // D
+
+            //glNormal3f(0.0, 0.0, 1.0);
+            -1.0f, 1.0f, 1.0f, // A
+            -1.0f, -1.0f, 1.0f, // B
+            1.0f, 1.0f, 1.0f, // D
+            -1.0f, -1.0f, 1.0f, // B
+            1.0f, -1.0f, 1.0f, // C
+            1.0f, 1.0f, 1.0f, // D
 
 //        glNormal3f(0.0, -1.0, 0.0);
-        1.0f, -1.0f, 1.0f, // A
-        -1.0f, -1.0f, 1.0f, // B
-        1.0f, -1.0f, -1.0f, // D
-        -1.0f, -1.0f, 1.0f, // B
-        -1.0f, -1.0f, -1.0f, // C
-        1.0f, -1.0f, -1.0f, // D
+            1.0f, -1.0f, 1.0f, // A
+            -1.0f, -1.0f, 1.0f, // B
+            1.0f, -1.0f, -1.0f, // D
+            -1.0f, -1.0f, 1.0f, // B
+            -1.0f, -1.0f, -1.0f, // C
+            1.0f, -1.0f, -1.0f, // D
 
 //        glNormal3f(0.0, 1.0, 0.0);
-        1.0f, 1.0f, 1.0f, // A
-        1.0f, 1.0f, -1.0f, // B
-        -1.0f, 1.0f, 1.0f, // D
-        1.0f, 1.0f, -1.0f, // B
-        -1.0f, 1.0f, -1.0f, // C
-        -1.0f, 1.0f, 1.0f, // D
+            1.0f, 1.0f, 1.0f, // A
+            1.0f, 1.0f, -1.0f, // B
+            -1.0f, 1.0f, 1.0f, // D
+            1.0f, 1.0f, -1.0f, // B
+            -1.0f, 1.0f, -1.0f, // C
+            -1.0f, 1.0f, 1.0f, // D
 
 //        glNormal3f(-1.0, 0.0, 0.0);
-        -1.0f, 1.0f, 1.0f, // A
-        -1.0f, 1.0f, -1.0f, // B
-        -1.0f, -1.0f, 1.0f, // D
-        -1.0f, 1.0f, -1.0f, // B
-        -1.0f, -1.0f, -1.0f, // C
-        -1.0f, -1.0f, 1.0f, // D
+            -1.0f, 1.0f, 1.0f, // A
+            -1.0f, 1.0f, -1.0f, // B
+            -1.0f, -1.0f, 1.0f, // D
+            -1.0f, 1.0f, -1.0f, // B
+            -1.0f, -1.0f, -1.0f, // C
+            -1.0f, -1.0f, 1.0f, // D
 
 //        glNormal3f(1.0, 0.0, 0.0);
-        1.0f, -1.0f, 1.0f, // A
-        1.0f, -1.0f, -1.0f, // B
-        1.0f, 1.0f, 1.0f, // D
-        1.0f, -1.0f, -1.0f, // B
-        1.0f, 1.0f, -1.0f, // C
-        1.0f, 1.0f, 1.0f // D
-};
+            1.0f, -1.0f, 1.0f, // A
+            1.0f, -1.0f, -1.0f, // B
+            1.0f, 1.0f, 1.0f, // D
+            1.0f, -1.0f, -1.0f, // B
+            1.0f, 1.0f, -1.0f, // C
+            1.0f, 1.0f, 1.0f // D
+    };
 
 /**
  * Just the current frame in the display.
  */
-static void renderFrame() {
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    checkGlError("glClearColor");
-    glClear( GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-    checkGlError("glClear");
+    static void renderFrame() {
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        checkGlError("glClearColor");
+        glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+        checkGlError("glClear");
 
-    if(gOSVRDisplayConfig != NULL && gClientContext != NULL) {
-        gClientContext->update();
-        if(gLastFrame != nullptr) {
-            updateTexture(gLastFrameWidth, gLastFrameHeight, gLastFrame);
-            osvrClientFreeImage(gClientContext->get(), gLastFrame);
-            gLastFrame = nullptr;
+        if (gOSVRDisplayConfig != NULL && gClientContext != NULL) {
+            osvrClientUpdate(gClientContext);
+            if (gLastFrame != nullptr) {
+                updateTexture(gLastFrameWidth, gLastFrameHeight, gLastFrame);
+                osvrClientFreeImage(gClientContext, gLastFrame);
+                gLastFrame = nullptr;
+            }
+            //LOGI("[OSVR] got osvrDisplayConfig. iterating through displays.");
+            OSVR_ViewerCount numViewers;
+            osvrClientGetNumViewers(gOSVRDisplayConfig, &numViewers);
+
+            for (OSVR_ViewerCount viewer = 0; viewer < numViewers; viewer++) {
+                OSVR_EyeCount numEyes;
+                osvrClientGetNumEyesForViewer(gOSVRDisplayConfig, 0, &numEyes);
+                for (OSVR_EyeCount eye = 0; eye < numEyes; eye++) {
+                    /// Try retrieving the view matrix (based on eye pose) from OSVR
+                    GLfloat viewMat[OSVR_MATRIX_SIZE];
+                    osvrClientGetViewerEyeViewMatrixf(
+                            gOSVRDisplayConfig, viewer, eye,
+                            OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS,
+                            viewMat);
+
+                    OSVR_SurfaceCount numSurfaces;
+                    osvrClientGetNumSurfacesForViewerEye(gOSVRDisplayConfig, viewer, eye,
+                                                         &numSurfaces);
+
+                    /// For each display surface seen by the given eye of the given
+                    /// viewer...
+                    for (OSVR_SurfaceCount surface = 0; surface < numSurfaces; surface++) {
+                        OSVR_ViewportDimension left, bottom, width, height;
+                        osvrClientGetRelativeViewportForViewerEyeSurface(gOSVRDisplayConfig, viewer,
+                                                                         eye, surface, &left,
+                                                                         &bottom, &width, &height);
+                        glViewport(static_cast<GLint>(left),
+                                   static_cast<GLint>(bottom),
+                                   static_cast<GLsizei>(width),
+                                   static_cast<GLsizei>(height));
+
+                        /// Set the OpenGL projection matrix based on the one we
+                        /// computed.
+                        GLfloat zNear = 0.001f;
+                        GLfloat zFar = 10000.0f;
+                        GLfloat projMat[OSVR_MATRIX_SIZE];
+                        osvrClientGetViewerEyeSurfaceProjectionMatrixf(
+                                gOSVRDisplayConfig, viewer, eye, surface,
+                                zNear, zFar,
+                                OSVR_MATRIX_COLMAJOR
+                                | OSVR_MATRIX_COLVECTORS
+                                | OSVR_MATRIX_SIGNEDZ
+                                | OSVR_MATRIX_RHINPUT, projMat);
+
+                        const static GLfloat identityMat4f[16] = {
+                                1.0f, 0.0f, 0.0f, 0.0f,
+                                0.0f, 1.0f, 0.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 0.0f, 1.0f,
+                        };
+
+                        /// Call out to render our scene.
+                        glUseProgram(gProgram);
+                        checkGlError("glUseProgram");
+
+                        glUniformMatrix4fv(gvProjectionUniformId, 1, GL_FALSE, projMat);
+                        glUniformMatrix4fv(gvViewUniformId, 1, GL_FALSE, viewMat);
+                        glUniformMatrix4fv(gvModelUniformId, 1, GL_FALSE, identityMat4f);
+
+                        glVertexAttribPointer(gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0,
+                                              gTriangleVertices);
+                        checkGlError("glVertexAttribPointer");
+                        glEnableVertexAttribArray(gvPositionHandle);
+                        checkGlError("glEnableVertexAttribArray");
+
+                        glVertexAttribPointer(gvColorHandle, 4, GL_FLOAT, GL_FALSE, 0,
+                                              gTriangleColors);
+                        checkGlError("glVertexAttribPointer");
+                        glEnableVertexAttribArray(gvColorHandle);
+                        checkGlError("glEnableVertexAttribArray");
+
+                        glVertexAttribPointer(gvTexCoordinateHandle, 2, GL_FLOAT, GL_FALSE, 0,
+                                              gTriangleTexCoordinates);
+                        checkGlError("glVertexAttribPointer");
+                        glEnableVertexAttribArray(gvTexCoordinateHandle);
+                        checkGlError("glEnableVertexAttribArray");
+
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, gTextureID);
+                        glUniform1i(guTextureUniformId, 0);
+
+                        glDrawArrays(GL_TRIANGLES, 0, 36);
+                        checkGlError("glDrawArrays");
+                    }
+                }
+            }
         }
-        //LOGI("[OSVR] got osvrDisplayConfig. iterating through displays.");
-        gOSVRDisplayConfig->forEachEye([](osvr::clientkit::Eye eye) {
-
-            /// Try retrieving the view matrix (based on eye pose) from OSVR
-            GLfloat viewMat[OSVR_MATRIX_SIZE];
-            eye.getViewMatrix(OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS,
-                              viewMat);
-
-            /// For each display surface seen by the given eye of the given
-            /// viewer...
-            eye.forEachSurface([&viewMat](osvr::clientkit::Surface surface) {
-                auto viewport = surface.getRelativeViewport();
-                glViewport(static_cast<GLint>(viewport.left),
-                           static_cast<GLint>(viewport.bottom),
-                           static_cast<GLsizei>(viewport.width),
-                           static_cast<GLsizei>(viewport.height));
-
-                /// Set the OpenGL projection matrix based on the one we
-                /// computed.
-                GLfloat zNear = 0.001f;
-                GLfloat zFar = 10000.0f;
-                GLfloat projMat[OSVR_MATRIX_SIZE];
-                surface.getProjectionMatrix(
-                        zNear, zFar, OSVR_MATRIX_COLMAJOR | OSVR_MATRIX_COLVECTORS |
-                                     OSVR_MATRIX_SIGNEDZ | OSVR_MATRIX_RHINPUT,
-                        projMat);
-
-                const static GLfloat identityMat4f[16] = {
-                        1.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 1.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 1.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 1.0f,
-                };
-
-                /// Call out to render our scene.
-                glUseProgram(gProgram);
-                checkGlError("glUseProgram");
-
-                glUniformMatrix4fv(gvProjectionUniformId, 1, GL_FALSE, projMat);
-                glUniformMatrix4fv(gvViewUniformId, 1, GL_FALSE, viewMat);
-                glUniformMatrix4fv(gvModelUniformId, 1, GL_FALSE, identityMat4f);
-
-                glVertexAttribPointer(gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0, gTriangleVertices);
-                checkGlError("glVertexAttribPointer");
-                glEnableVertexAttribArray(gvPositionHandle);
-                checkGlError("glEnableVertexAttribArray");
-
-                glVertexAttribPointer(gvColorHandle, 4, GL_FLOAT, GL_FALSE, 0, gTriangleColors);
-                checkGlError("glVertexAttribPointer");
-                glEnableVertexAttribArray(gvColorHandle);
-                checkGlError("glEnableVertexAttribArray");
-
-                glVertexAttribPointer(gvTexCoordinateHandle, 2, GL_FLOAT, GL_FALSE, 0, gTriangleTexCoordinates);
-                checkGlError("glVertexAttribPointer");
-                glEnableVertexAttribArray(gvTexCoordinateHandle);
-                checkGlError("glEnableVertexAttribArray");
-
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, gTextureID);
-                glUniform1i(guTextureUniformId, 0);
-
-                glDrawArrays(GL_TRIANGLES, 0, 36);
-                checkGlError("glDrawArrays");
-            });
-        });
-    }
-}
-
-static void stop() {
-    LOGI("[OSVR] Shutting down...");
-    if(gOSVRDisplayConfig != nullptr) {
-        delete gOSVRDisplayConfig;
-        gOSVRDisplayConfig = nullptr;
     }
 
-    // is this needed? Maybe not. the display config manages the lifetime.
-    if(gClientContext != nullptr) {
-        delete gClientContext;
-        gClientContext = nullptr;
-    }
 
-    osvrClientReleaseAutoStartedServer();
+    static void stop() {
+        LOGI("[OSVR] Shutting down...");
+        if (gOSVRDisplayConfig != nullptr) {
+            osvrClientFreeDisplay(gOSVRDisplayConfig);
+            gOSVRDisplayConfig = nullptr;
+        }
+
+        // is this needed? Maybe not. the display config manages the lifetime.
+        if (gClientContext != nullptr) {
+            osvrClientShutdown(gClientContext);
+            gClientContext = nullptr;
+        }
+
+        osvrClientReleaseAutoStartedServer();
+    }
 }
 
 extern "C" {
@@ -626,17 +666,17 @@ extern "C" {
 
 JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_init(JNIEnv * env, jobject obj,  jint width, jint height)
 {
-    setupGraphics(width, height);
+    OSVROpenGL::setupGraphics(width, height);
 }
 
 JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_step(JNIEnv * env, jobject obj)
 {
-    renderFrame();
+    OSVROpenGL::renderFrame();
 }
 
 JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_stop(JNIEnv * env, jobject obj)
 {
-    stop();
+    OSVROpenGL::stop();
 }
 
 //END_INCLUDE(all)

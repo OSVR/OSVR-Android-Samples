@@ -44,6 +44,7 @@ public class JNIBridge {
              System.loadLibrary("osvrJointClientKit");
              System.loadLibrary("com_osvr_android_jniImaging");
              System.loadLibrary("com_osvr_android_sensorTracker");
+             System.loadLibrary("com_osvr_Multiserver");
              System.loadLibrary("native-activity");
              librariesLoaded = true;
          }

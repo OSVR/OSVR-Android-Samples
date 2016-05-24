@@ -5,8 +5,7 @@
 
 
     <application
-        android:label="@string/main_activity"
-        android:debuggable="true">
+        android:label="@string/main_activity">
         <activity android:name="MainActivity"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:launchMode="singleTask"
