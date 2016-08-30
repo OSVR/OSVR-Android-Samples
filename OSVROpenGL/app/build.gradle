@@ -11,12 +11,12 @@ model {
             }
             boost_filesystem {
                 binaries.withType(SharedLibraryBinary) {
-                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a/gnu-5/libboost_filesystem.so')
+                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/libs/armeabi-v7a/libboost_filesystem.so')
                 }
             }
             boost_system {
                 binaries.withType(SharedLibraryBinary) {
-                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a/gnu-5/libboost_system.so')
+                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/libs/armeabi-v7a/libboost_system.so')
                 }
             }
             jsoncpp {
@@ -89,11 +89,16 @@ model {
                     sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrServer.so')
                 }
             }
-            jniImaging {
+            osvrRenderManager {
                 binaries.withType(SharedLibraryBinary) {
-                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/libcom_osvr_android_jniImaging.so')
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrRenderManager.so')
                 }
             }
+//            jniImaging {
+//                binaries.withType(SharedLibraryBinary) {
+//                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/libcom_osvr_android_jniImaging.so')
+//                }
+//            }
             sensorTracker {
                 binaries.withType(SharedLibraryBinary) {
                     sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/libcom_osvr_android_sensorTracker.so')
@@ -109,6 +114,12 @@ model {
                     sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/liborg_osvr_filter_oneeuro.so')
                 }
             }
+            deadreckoning {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/liborg_osvr_filter_deadreckoningrotation.so')
+                }
+            }
+
         }
     }
     android {
@@ -117,7 +128,7 @@ model {
 
         defaultConfig {
             applicationId = 'com.osvr.android.gles2sample'
-            minSdkVersion.apiLevel = 13
+            minSdkVersion.apiLevel = 21
             targetSdkVersion.apiLevel = 23
             versionCode = 1
             versionName = '1.0'
@@ -127,7 +138,7 @@ model {
             platformVersion = 21
             moduleName = 'native-activity'
             toolchain = 'gcc'
-            toolchainVersion = '5'
+            toolchainVersion = '4.9'
             stl = 'gnustl_shared'
             abiFilters.add('armeabi-v7a')
             //ldFlags.add('-L' + file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/libs/armeabi-v7a'))
@@ -157,7 +168,7 @@ model {
 //                           'org_osvr_filter_oneeuro'
             ])
             cppFlags.add('-I' + file(System.getenv('OSVR_ANDROID') + '/include'))
-            cppFlags.add('-I' + file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/include'))
+            cppFlags.add('-I' + file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/include'))
             cppFlags.addAll(['-std=c++11', '-fexceptions'])
         }
 
@@ -182,17 +193,18 @@ model {
                         library 'osvrPluginKit' linkage 'shared'
                         library 'osvrVRPNServer' linkage 'shared'
                         library 'osvrServer' linkage 'shared'
-                        library 'jniImaging' linkage 'shared'
-                        library 'sensorTracker' linkage 'shared'
-                        library 'multiserver' linkage 'shared'
-                        library 'oneeuro' linkage 'shared'
+                        library 'osvrRenderManager' linkage 'shared'
+//                        library 'jniImaging' linkage 'shared'
+//                        library 'sensorTracker' linkage 'shared'
+//                        library 'multiserver' linkage 'shared'
+//                        library 'oneeuro' linkage 'shared'
                     }
                 }
                 jniLibs {
                     source {
                         srcDir file(System.getenv('OSVR_ANDROID') + '/lib')
                         srcDir file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0')
-                        srcDir file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a/gnu-5')
+                        srcDir file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/libs/armeabi-v7a')
                     }
                     dependencies {
                         library 'crystax'
@@ -212,10 +224,12 @@ model {
                         library 'osvrPluginKit'
                         library 'osvrVRPNServer'
                         library 'osvrServer'
-                        library 'jniImaging'
+                        library 'osvrRenderManager'
+//                        library 'jniImaging'
                         library 'sensorTracker'
                         library 'multiserver'
                         library 'oneeuro'
+                        library 'deadreckoning'
                     }
                 }
             }

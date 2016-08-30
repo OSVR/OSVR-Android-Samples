@@ -4,11 +4,11 @@
   },
   "hmd": {
     "device": {
-      "vendor": "LG",
-      "model": "G4",
+      "vendor": "Samsung",
+      "model": "Galaxy S6",
       "num_displays": 1,
       "Version": "1.1",
-      "Note": "Settings for the LG G4 screen"
+      "Note": "Samsung Galaxy S6"
     },
     "field_of_view": {
       "monocular_horizontal": 90,
@@ -18,8 +18,8 @@
     },
     "resolutions": [
       {
-        "width": 1920,
-        "height": 1080,
+        "width": 2560,
+        "height": 1440,
         "video_inputs": 1,
         "display_mode": "horz_side_by_side",
         "swap_eyes": 0

@@ -42,9 +42,11 @@ public class JNIBridge {
              System.loadLibrary("osvrVRPNServer");
              System.loadLibrary("osvrServer");
              System.loadLibrary("osvrJointClientKit");
-             System.loadLibrary("com_osvr_android_jniImaging");
+//             System.loadLibrary("com_osvr_android_jniImaging");
              System.loadLibrary("com_osvr_android_sensorTracker");
              System.loadLibrary("com_osvr_Multiserver");
+             System.loadLibrary("org_osvr_filter_deadreckoningrotation");
+             System.loadLibrary("org_osvr_filter_oneeuro");
              System.loadLibrary("native-activity");
              librariesLoaded = true;
          }
