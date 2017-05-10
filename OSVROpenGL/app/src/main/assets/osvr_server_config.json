@@ -32,8 +32,6 @@
     }
   },
   "plugins": [
-//    "com_osvr_android_jniImaging",
-    "com_osvr_android_sensorTracker",
-    "com_osvr_Multiserver"
+    "com_osvr_android_sensorTracker"
   ]
 }

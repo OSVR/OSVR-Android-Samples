@@ -69,7 +69,8 @@ public class OSVRFileExtractor {
     }
 
     private static String getAppRoot(ContextWrapper context) {
-        return "/data/data/" + context.getPackageName() + "/files";
+        return context.getFilesDir().getAbsolutePath();
+        //return "/data/data/" + context.getPackageName() + "/files";
     }
 
     /**

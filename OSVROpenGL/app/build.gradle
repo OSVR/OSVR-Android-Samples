@@ -11,12 +11,17 @@ model {
             }
             boost_filesystem {
                 binaries.withType(SharedLibraryBinary) {
-                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/libs/armeabi-v7a/libboost_filesystem.so')
+                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a/gnu-4.9/libboost_filesystem.so')
                 }
             }
             boost_system {
                 binaries.withType(SharedLibraryBinary) {
-                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/libs/armeabi-v7a/libboost_system.so')
+                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a/gnu-4.9/libboost_system.so')
+                }
+            }
+            gnustl {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libgnustl_shared.so')
                 }
             }
             jsoncpp {
@@ -123,13 +128,13 @@ model {
         }
     }
     android {
-        compileSdkVersion = 23
-        buildToolsVersion = '23.0.2'
+        compileSdkVersion = 25
+        buildToolsVersion = '25.0.3'
 
         defaultConfig {
             applicationId = 'com.osvr.android.gles2sample'
             minSdkVersion.apiLevel = 21
-            targetSdkVersion.apiLevel = 23
+            targetSdkVersion.apiLevel = 21
             versionCode = 1
             versionName = '1.0'
         }
@@ -141,7 +146,7 @@ model {
             toolchainVersion = '4.9'
             stl = 'gnustl_shared'
             abiFilters.add('armeabi-v7a')
-            //ldFlags.add('-L' + file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/libs/armeabi-v7a'))
+            //ldFlags.add('-L' + file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a/gnu-4.9'))
             ldFlags.add('-L' + file(System.getenv('OSVR_ANDROID') + '/lib'))
             //ldFlags.add('-L' + file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0'))
             ldLibs.addAll(['log',
@@ -168,7 +173,7 @@ model {
 //                           'org_osvr_filter_oneeuro'
             ])
             cppFlags.add('-I' + file(System.getenv('OSVR_ANDROID') + '/include'))
-            cppFlags.add('-I' + file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/include'))
+            cppFlags.add('-I' + file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/include'))
             cppFlags.addAll(['-std=c++11', '-fexceptions'])
         }
 
@@ -179,6 +184,7 @@ model {
                         library 'crystax' linkage 'shared'
                         library 'boost_filesystem' linkage 'shared'
                         library 'boost_system' linkage 'shared'
+                        library 'gnustl' linkage 'shared'
                         library 'jsoncpp' linkage 'shared'
                         library 'usb1_0' linkage 'shared'
                         library 'osvrUtil' linkage 'shared'
@@ -204,12 +210,13 @@ model {
                     source {
                         srcDir file(System.getenv('OSVR_ANDROID') + '/lib')
                         srcDir file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0')
-                        srcDir file(System.getenv('ANDROID_NDK') + '/sources/boost/1.57.0/libs/armeabi-v7a')
+                        srcDir file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a')
                     }
                     dependencies {
                         library 'crystax'
                         library 'boost_filesystem'
                         library 'boost_system'
+                        library 'gnustl'
                         library 'jsoncpp'
                         library 'usb1_0'
                         library 'osvrUtil'
@@ -246,7 +253,7 @@ model {
 dependencies {
     println rootProject.getName()
     compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile 'com.android.support:appcompat-v7:23.3.0'
+    compile 'com.android.support:appcompat-v7:25.3.1'
 }
 
 //def getNdkDir() {
