@@ -22,7 +22,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package com.osvr.android.utils;
+package com.osvr.common.util;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -69,7 +69,9 @@ public class OSVRFileExtractor {
     }
 
     private static String getAppRoot(ContextWrapper context) {
-        return "/data/data/" + context.getPackageName() + "/files";
+        return "/sdcard/osvr";
+        //return context.getFilesDir().getAbsolutePath();
+        //return "/data/data/" + context.getPackageName() + "/files";
     }
 
     /**
@@ -78,7 +80,7 @@ public class OSVRFileExtractor {
      * @param context Typically an Activity instance.
      */
     public static void extractFiles(ContextWrapper context) {
-        extractAssets(context, false);
+        extractAssets(context, false, false);
     }
 
     /**
@@ -87,7 +89,7 @@ public class OSVRFileExtractor {
      * @param context Typically an Activity instance.
      * @param worldReadable deprecated. Always use false.
      */
-    private static void extractAssets(ContextWrapper context, boolean worldReadable) {
+    private static void extractAssets(ContextWrapper context, boolean worldReadable, boolean replaceIfNewer) {
         try {
             Runtime runtime = Runtime.getRuntime();
             String appRoot = getAppRoot(context);
@@ -104,7 +106,7 @@ public class OSVRFileExtractor {
                 File outputFile = new File(appRoot, path);
                 outputFile.getParentFile().mkdirs();
 
-                if (outputFile.exists() && entry.getSize() == outputFile.length() && zipLastModified < outputFile.lastModified()) {
+                if (outputFile.exists() && (!replaceIfNewer || (entry.getSize() == outputFile.length() && zipLastModified < outputFile.lastModified()))) {
                     Log(outputFile.getName() + " already extracted.");
                 } else {
                     FileOutputStream fos = new FileOutputStream(outputFile);

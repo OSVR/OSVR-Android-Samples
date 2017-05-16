@@ -1,72 +1,225 @@
-import org.apache.tools.ant.taskdefs.condition.Os
-apply plugin: 'com.android.application'
+//import org.apache.tools.ant.taskdefs.condition.Os
+apply plugin: 'com.android.model.application'
 
-android {
-    compileSdkVersion 23
-    buildToolsVersion "23.0.0"
+model {
+    repositories {
+        libs(PrebuiltLibraries) {
+            crystax {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libcrystax.so')
+                }
+            }
+            gnustl {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libgnustl_shared.so')
+                }
+            }
+            jsoncpp {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libjsoncpp.so')
+                }
+            }
+            usb1_0 {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libusb1.0.so')
+                }
+            }
+            osvrUtil {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrUtil.so')
+                }
+            }
+            osvrCommon {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrCommon.so')
+                }
+            }
+            osvrClient {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrClient.so')
+                }
+            }
+            osvrClientKit {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrClientKit.so')
+                }
+            }
+            osvrJointClientKit {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrJointClientKit.so')
+                }
+            }
+            osvrAnalysisPluginKit {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrAnalysisPluginKit.so')
+                }
+            }
+            functionality {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libfunctionality.so')
+                }
+            }
+            osvrConnection {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrConnection.so')
+                }
+            }
+            osvrPluginHost {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrPluginHost.so')
+                }
+            }
+            osvrPluginKit {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrPluginKit.so')
+                }
+            }
+            osvrVRPNServer {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrVRPNServer.so')
+                }
+            }
+            osvrServer {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrServer.so')
+                }
+            }
+            osvrRenderManager {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrRenderManager.so')
+                }
+            }
+//            jniImaging {
+//                binaries.withType(SharedLibraryBinary) {
+//                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/libcom_osvr_android_jniImaging.so')
+//                }
+//            }
+            sensorTracker {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/libcom_osvr_android_sensorTracker.so')
+                }
+            }
+            multiserver {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/libcom_osvr_Multiserver.so')
+                }
+            }
+            oneeuro {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/liborg_osvr_filter_oneeuro.so')
+                }
+            }
+            deadreckoning {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/liborg_osvr_filter_deadreckoningrotation.so')
+                }
+            }
 
-    defaultConfig {
-        applicationId "com.osvr.android.gles2sample"
-        minSdkVersion 22
-        targetSdkVersion 23
-        versionCode 1
-        versionName "1.0"
-    }
-
-    sourceSets.main.jni.srcDirs = [] // disable automatic ndk-build call, which ignore our Android.mk
-    sourceSets.main.jniLibs.srcDir 'src/main/libs'
-
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    android {
+        compileSdkVersion = 25
+        buildToolsVersion = '25.0.3'
 
-    // some of the config below is based off of the crystax-ndk documentation:
-    // source: https://www.crystax.net/en/blog/3
+        defaultConfig {
+            applicationId = 'com.osvr.android.gles2sample'
+            minSdkVersion.apiLevel = 21
+            targetSdkVersion.apiLevel = 21
+            versionCode = 1
+            versionName = '1.0'
+        }
 
-    // @todo create a task that copies com_osvr_android_sensorTracker.so to the appropriate place
-    // in app/assets/lib/osvr-plugins-0.
+        ndk {
+            platformVersion = 21
+            moduleName = 'native-activity'
+            toolchain = 'gcc'
+            toolchainVersion = '4.9'
+            stl = 'gnustl_shared'
+            abiFilters.add('armeabi-v7a')
+            ldLibs.addAll(['log',
+                           'android',
+                           'EGL',
+                           'GLESv2'
+            ])
+            cppFlags.add('-I' + file(System.getenv('OSVR_ANDROID') + '/include'))
+            cppFlags.addAll(['-std=c++11', '-fexceptions'])
+        }
 
-    task ndkBuild(type: Exec) {
-      workingDir file('src/main')
-      commandLine getNdkBuildCmd()
+        sources {
+            main {
+                jni {
+                    dependencies {
+                        library 'osvrRenderManager' linkage 'shared'
+                    }
+                    source {
+                        srcDir file(System.getenv('OSVR_ANDROID') + '/lib')
+                        srcDir file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0')
+                    }
+                }
+            }
+        }
+        sources {
+            main {
+                jni {
+                    dependencies {
+                        library 'crystax' linkage 'shared'
+                        library 'gnustl' linkage 'shared'
+                        library 'jsoncpp' linkage 'shared'
+                        library 'usb1_0' linkage 'shared'
+                        library 'osvrUtil' linkage 'shared'
+                        library 'osvrCommon' linkage 'shared'
+                        library 'osvrClient' linkage 'shared'
+                        library 'osvrClientKit' linkage 'shared'
+                        library 'osvrJointClientKit' linkage 'shared'
+                        library 'osvrAnalysisPluginKit' linkage 'shared'
+                        library 'functionality' linkage 'shared'
+                        library 'osvrConnection' linkage 'shared'
+                        library 'osvrPluginHost' linkage 'shared'
+                        library 'osvrPluginKit' linkage 'shared'
+                        library 'osvrVRPNServer' linkage 'shared'
+                        library 'osvrServer' linkage 'shared'
+                        library 'osvrRenderManager' linkage 'shared'
+//                        library 'jniImaging' linkage 'shared'
+//                        library 'sensorTracker' linkage 'shared'
+//                        library 'multiserver' linkage 'shared'
+//                        library 'oneeuro' linkage 'shared'
+                    }
+                }
+            }
+        }
+        buildTypes {
+            release {
+                minifyEnabled = false
+                proguardFiles.add(file('proguard-rules.pro'))
+            }
+        }
     }
-
-    tasks.withType(JavaCompile) {
-      compileTask -> compileTask.dependsOn ndkBuild
-    }
-
-    task cleanNative(type: Exec) {
-      workingDir file('src/main')
-      commandLine getNdkBuildCmd(), 'clean'
-    }
-
-    clean.dependsOn cleanNative
 }
 
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
+    println rootProject.getName()
+    compile fileTree(include: ['*.jar'], dir: 'libs')
+    compile 'com.android.support:appcompat-v7:25.3.1'
+    compile project(':osvrcommon')
 }
 
-def getNdkDir() {
-    if (System.env.ANDROID_NDK_ROOT != null)
-        return System.env.ANDROID_NDK_ROOT
-
-    Properties properties = new Properties()
-    properties.load(project.rootProject.file('local.properties').newDataInputStream())
-    def ndkdir = properties.getProperty('ndk.dir', null)
-    if (ndkdir == null)
-        throw new GradleException("NDK location not found. Define location with ndk.dir in the local.properties file or with an ANDROID_NDK_ROOT environment variable.")
-
-    return ndkdir
-}
-
-def getNdkBuildCmd() {
-    def ndkbuild = getNdkDir() + "/ndk-build"
-    if (Os.isFamily(Os.FAMILY_WINDOWS))
-        ndkbuild += ".cmd"
-
-    return ndkbuild
-}
+//def getNdkDir() {
+//    if (System.env.ANDROID_NDK_ROOT != null)
+//        return System.env.ANDROID_NDK_ROOT
+//
+//    Properties properties = new Properties()
+//    properties.load(project.rootProject.file('local.properties').newDataInputStream())
+//    def ndkdir = properties.getProperty('ndk.dir', null)
+//    if (ndkdir == null)
+//        throw new GradleException("NDK location not found. Define location with ndk.dir in the local.properties file or with an ANDROID_NDK_ROOT environment variable.")
+//
+//    return ndkdir
+//}
+//
+//def getNdkBuildCmd() {
+//    def ndkbuild = getNdkDir() + "/ndk-build"
+//    if (Os.isFamily(Os.FAMILY_WINDOWS))
+//        ndkbuild += ".cmd"
+//
+//    return ndkbuild
+//}

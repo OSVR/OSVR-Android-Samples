@@ -1,3 +1,7 @@
+# Project specific
+/OSVROpenGL/osvrcommon/src/main/jniLibs/
+/OSVROpenGL/osvrcommon/src/main/headers/
+
 # Built application files
 *.apk
 *.ap_

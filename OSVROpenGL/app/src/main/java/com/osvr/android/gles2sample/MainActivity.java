@@ -22,8 +22,7 @@ package com.osvr.android.gles2sample;
 import android.app.Activity;
 import android.os.Bundle;
 import android.util.Log;
-
-import com.osvr.android.utils.OSVRFileExtractor;
+import com.osvr.common.util.OSVRFileExtractor;
 
 
 public class MainActivity extends Activity {
@@ -37,7 +36,6 @@ public class MainActivity extends Activity {
         OSVRFileExtractor.extractFiles(this);
         mView = new MainActivityView(getApplication());
 	    setContentView(mView);
-
         //openCamera();
     }
 
