@@ -22,7 +22,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package com.osvr.android.utils;
+package com.osvr.common.util;
 
 import java.io.BufferedOutputStream;
 import java.io.File;

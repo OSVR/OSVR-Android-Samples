@@ -19,6 +19,8 @@
 
 package com.osvr.android.gles2sample;
 
+import com.osvr.common.jni.JNIBridge;
+
 // Wrapper for native library
 
 public class MainActivityJNILib {
@@ -26,7 +28,7 @@ public class MainActivityJNILib {
     private static boolean librariesLoaded = false;
 
     static {
-        com.osvr.android.jni.JNIBridge.loadLibraries();
+        JNIBridge.loadLibraries();
         System.loadLibrary("native-activity");
     }
     /**

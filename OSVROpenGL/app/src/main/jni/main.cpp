@@ -25,11 +25,12 @@
 #include <stdexcept>
 #include <chrono>
 #include <thread>
+#include <vector>
 #include <sstream>
 
 #include <dlfcn.h>
 
-#include <boost/filesystem.hpp>
+//#include <boost/filesystem.hpp>
 
 //#define GL_GLEXT_PROTOTYPES 1
 #include <GLES2/gl2.h>

@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 
-package com.osvr.android.jni;
+package com.osvr.common.jni;
 
 // Wrapper for native library
 

@@ -1,4 +1,4 @@
-import org.apache.tools.ant.taskdefs.condition.Os
+//import org.apache.tools.ant.taskdefs.condition.Os
 apply plugin: 'com.android.model.application'
 
 model {
@@ -7,16 +7,6 @@ model {
             crystax {
                 binaries.withType(SharedLibraryBinary) {
                     sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libcrystax.so')
-                }
-            }
-            boost_filesystem {
-                binaries.withType(SharedLibraryBinary) {
-                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a/gnu-4.9/libboost_filesystem.so')
-                }
-            }
-            boost_system {
-                binaries.withType(SharedLibraryBinary) {
-                    sharedLibraryFile = file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a/gnu-4.9/libboost_system.so')
                 }
             }
             gnustl {
@@ -146,34 +136,12 @@ model {
             toolchainVersion = '4.9'
             stl = 'gnustl_shared'
             abiFilters.add('armeabi-v7a')
-            //ldFlags.add('-L' + file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a/gnu-4.9'))
-            ldFlags.add('-L' + file(System.getenv('OSVR_ANDROID') + '/lib'))
-            //ldFlags.add('-L' + file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0'))
             ldLibs.addAll(['log',
                            'android',
                            'EGL',
-                           'GLESv2'//,
-//                           'boost_filesystem',
-//                           'boost_system',
-//                           'jsoncpp',
-//                           'usb1.0',
-//                           'osvrUtil',
-//                           'osvrCommon',
-//                           'osvrClient',
-//                           'osvrClientKit',
-//                           'functionality',
-//                           'osvrConnection',
-//                           'osvrPluginHost',
-//                           'osvrPluginKit',
-//                           'osvrVRPNServer',
-//                           'osvrServer',
-//                           'com_osvr_android_jniImaging',
-//                           'com_osvr_android_sensorTracker',
-//                           'com_osvr_Multiserver',
-//                           'org_osvr_filter_oneeuro'
+                           'GLESv2'
             ])
             cppFlags.add('-I' + file(System.getenv('OSVR_ANDROID') + '/include'))
-            cppFlags.add('-I' + file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/include'))
             cppFlags.addAll(['-std=c++11', '-fexceptions'])
         }
 
@@ -181,9 +149,20 @@ model {
             main {
                 jni {
                     dependencies {
+                        library 'osvrRenderManager' linkage 'shared'
+                    }
+                    source {
+                        srcDir file(System.getenv('OSVR_ANDROID') + '/lib')
+                        srcDir file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0')
+                    }
+                }
+            }
+        }
+        sources {
+            main {
+                jni {
+                    dependencies {
                         library 'crystax' linkage 'shared'
-                        library 'boost_filesystem' linkage 'shared'
-                        library 'boost_system' linkage 'shared'
                         library 'gnustl' linkage 'shared'
                         library 'jsoncpp' linkage 'shared'
                         library 'usb1_0' linkage 'shared'
@@ -206,39 +185,6 @@ model {
 //                        library 'oneeuro' linkage 'shared'
                     }
                 }
-                jniLibs {
-                    source {
-                        srcDir file(System.getenv('OSVR_ANDROID') + '/lib')
-                        srcDir file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0')
-                        srcDir file(System.getenv('ANDROID_NDK') + '/sources/boost/1.59.0/libs/armeabi-v7a')
-                    }
-                    dependencies {
-                        library 'crystax'
-                        library 'boost_filesystem'
-                        library 'boost_system'
-                        library 'gnustl'
-                        library 'jsoncpp'
-                        library 'usb1_0'
-                        library 'osvrUtil'
-                        library 'osvrCommon'
-                        library 'osvrClient'
-                        library 'osvrClientKit'
-                        library 'osvrJointClientKit'
-                        library 'osvrAnalysisPluginKit'
-                        library 'functionality'
-                        library 'osvrConnection'
-                        library 'osvrPluginHost'
-                        library 'osvrPluginKit'
-                        library 'osvrVRPNServer'
-                        library 'osvrServer'
-                        library 'osvrRenderManager'
-//                        library 'jniImaging'
-                        library 'sensorTracker'
-                        library 'multiserver'
-                        library 'oneeuro'
-                        library 'deadreckoning'
-                    }
-                }
             }
         }
         buildTypes {
@@ -252,8 +198,9 @@ model {
 
 dependencies {
     println rootProject.getName()
-    compile fileTree(dir: 'libs', include: ['*.jar'])
+    compile fileTree(include: ['*.jar'], dir: 'libs')
     compile 'com.android.support:appcompat-v7:25.3.1'
+    compile project(':osvrcommon')
 }
 
 //def getNdkDir() {
