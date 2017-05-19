@@ -35,7 +35,8 @@ public class MainActivityJNILib {
      * @param width the current view width
      * @param height the current view height
      */
-    public static native void init(int width, int height);
+    public static native void initGraphics(int width, int height);
+    public static native void initOSVR();
     public static native void step();
     public static native void stop();
 }

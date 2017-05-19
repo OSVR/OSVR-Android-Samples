@@ -42,10 +42,14 @@ import android.content.Context;
 import android.graphics.PixelFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
+import android.opengl.EGL14;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
 import java.io.IOException;
+
+import javax.microedition.khronos.egl.EGL;
 import javax.microedition.khronos.egl.EGL10;
+import javax.microedition.khronos.egl.EGL11;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.egl.EGLContext;
 import javax.microedition.khronos.egl.EGLDisplay;
@@ -74,6 +78,8 @@ class MainActivityView extends GLSurfaceView implements Camera.PreviewCallback {
     private static String TAG = "GL2JNIView";
     private static final boolean DEBUG = false;
     boolean mPaused = false;
+    MainActivityView.Renderer mRenderer = null;
+
 //    SurfaceTexture mCameraTexture;
 //    int mCameraPreviewWidth = -1;
 //    int mCameraPreviewHeight = -1;
@@ -158,6 +164,12 @@ class MainActivityView extends GLSurfaceView implements Camera.PreviewCallback {
 //        openCamera();
     }
 
+    public void proceedWithPermissions() {
+        if(mRenderer != null) {
+            mRenderer.proceedWithPermissions();
+        }
+    }
+
     private void init(boolean translucent, int depth, int stencil) {
         Log.i(TAG, "MainActivityView.init()");
         /* By default, GLSurfaceView() creates a RGB_565 opaque surface.
@@ -184,7 +196,8 @@ class MainActivityView extends GLSurfaceView implements Camera.PreviewCallback {
                              new ConfigChooser(5, 6, 5, 0, depth, stencil) );
 
         /* Set the renderer responsible for frame rendering */
-        setRenderer(new Renderer());
+        mRenderer = new Renderer();
+        setRenderer(mRenderer);
     }
 
     private static class ContextFactory implements GLSurfaceView.EGLContextFactory {
@@ -226,6 +239,7 @@ class MainActivityView extends GLSurfaceView implements Camera.PreviewCallback {
          * perform actual matching in chooseConfig() below.
          */
         private static int EGL_OPENGL_ES2_BIT = 4;
+
         private static int[] s_configAttribs2 =
         {
             EGL10.EGL_RED_SIZE, 4,
@@ -282,6 +296,7 @@ class MainActivityView extends GLSurfaceView implements Camera.PreviewCallback {
                             EGL10.EGL_BLUE_SIZE, 0);
                 int a = findConfigAttrib(egl, display, config,
                         EGL10.EGL_ALPHA_SIZE, 0);
+
 
                 if (r == mRedSize && g == mGreenSize && b == mBlueSize && a == mAlphaSize)
                     return config;
@@ -404,17 +419,34 @@ class MainActivityView extends GLSurfaceView implements Camera.PreviewCallback {
     }
 
     private class Renderer implements GLSurfaceView.Renderer {
+        private boolean mProceedWithPermissions = false;
+        private boolean mFirstSurfaceChanged = false;
         public void onDrawFrame(GL10 gl) {
             MainActivityJNILib.step();
         }
 
         public void onSurfaceChanged(GL10 gl, int width, int height) {
-            MainActivityJNILib.init(width, height);
+            mFirstSurfaceChanged = true;
+            MainActivityJNILib.initGraphics(width, height);
+
+            // if user has granted storage permissions, go ahead and initialize OSVR
+            if(mProceedWithPermissions) {
+                MainActivityJNILib.initOSVR(); // this call is idempotent, so no need to check
+            }
 //            openCamera();
         }
 
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
             // Do nothing.
+        }
+
+        public void proceedWithPermissions() {
+            mProceedWithPermissions = true;
+            // if we've already initialized graphics once, then we should go ahead
+            // and call initOSVR, otherwise wait until the first call to onSurfaceChanged.
+            if(mFirstSurfaceChanged) {
+                MainActivityJNILib.initOSVR();
+            }
         }
     }
 

@@ -159,6 +159,7 @@ namespace OSVROpenGL {
                     //"    gl_FragColor = texture2D(uTexture, texCoordinate);\n"
                     "}\n";
 
+    // GLES globals
     static int gWidth = 0;
     static int gHeight = 0;
     static GLuint gProgram;
@@ -170,8 +171,13 @@ namespace OSVROpenGL {
     static GLuint gvViewUniformId;
     static GLuint gvModelUniformId;
     static GLuint gTextureID;
+    static bool gGraphicsInitializedOnce = false; // if setupGraphics has been called at least once
+
+    // OSVR globals
+    static bool gOSVRInitialized = false;
+    static bool gRenderManagerInitialized = false;
     //static OSVR_DisplayConfig gOSVRDisplayConfig;
-    static OSVR_ClientContext gClientContext;
+    static OSVR_ClientContext gClientContext = NULL;
     static OSVR_ClientInterface gCamera = NULL;
     static OSVR_ClientInterface gHead = NULL;
     static int gReportNumber = 0;
@@ -535,6 +541,9 @@ namespace OSVROpenGL {
     }
 
     static bool setupOSVR() {
+        if(gOSVRInitialized) {
+            return true;
+        }
         OSVR_ReturnCode rc = 0;
         try {
             // On Android, the current working directory is added to the default plugin search path.
@@ -574,29 +583,6 @@ namespace OSVROpenGL {
                     LOGI("[OSVR] Client context reported good status.");
                 }
 
-                PassThroughOpenGLContextImpl* glContextImpl = new PassThroughOpenGLContextImpl();
-                gGraphicsLibrary.toolkit = glContextImpl->getToolkit();
-
-                if(OSVR_RETURN_SUCCESS != osvrCreateRenderManagerOpenGL(
-                        gClientContext, "OpenGL", gGraphicsLibrary, &gRenderManager, &gRenderManagerOGL)) {
-                    std::cerr << "Could not create the RenderManager" << std::endl;
-                    return false;
-                }
-
-                if(!setupRenderTextures(gRenderManager)) {
-                    return false;
-                }
-
-                // Open the display and make sure this worked
-                OSVR_OpenResultsOpenGL openResults;
-                if (OSVR_RETURN_SUCCESS != osvrRenderManagerOpenDisplayOpenGL(
-                        gRenderManagerOGL, &openResults) ||
-                        (openResults.status == OSVR_OPEN_STATUS_FAILURE)) {
-                    std::cerr << "Could not open display" << std::endl;
-                    osvrDestroyRenderManager(gRenderManager);
-                    gRenderManager = gRenderManagerOGL = nullptr;
-                    return false;
-                }
 
 //                if (OSVR_RETURN_SUCCESS !=
 //                    osvrClientGetInterface(gClientContext, "/camera", &gCamera)) {
@@ -612,6 +598,7 @@ namespace OSVROpenGL {
 //                }
             }
 
+            gOSVRInitialized = true;
             return true;
         } catch (const std::runtime_error &ex) {
             LOGI("[OSVR] OSVR initialization failed: %s", ex.what());
@@ -619,6 +606,46 @@ namespace OSVROpenGL {
         }
     }
 
+    // Idempotent call to setup render manager
+    static bool setupRenderManager() {
+        if(!gOSVRInitialized || !gGraphicsInitializedOnce) {
+            return false;
+        }
+        if(gRenderManagerInitialized) {
+            return true;
+        }
+        try {
+            PassThroughOpenGLContextImpl* glContextImpl = new PassThroughOpenGLContextImpl();
+            gGraphicsLibrary.toolkit = glContextImpl->getToolkit();
+
+            if(OSVR_RETURN_SUCCESS != osvrCreateRenderManagerOpenGL(
+                    gClientContext, "OpenGL", gGraphicsLibrary, &gRenderManager, &gRenderManagerOGL)) {
+                std::cerr << "Could not create the RenderManager" << std::endl;
+                return false;
+            }
+
+            if(!setupRenderTextures(gRenderManager)) {
+                return false;
+            }
+
+            // Open the display and make sure this worked
+            OSVR_OpenResultsOpenGL openResults;
+            if (OSVR_RETURN_SUCCESS != osvrRenderManagerOpenDisplayOpenGL(
+                    gRenderManagerOGL, &openResults) ||
+                (openResults.status == OSVR_OPEN_STATUS_FAILURE)) {
+                std::cerr << "Could not open display" << std::endl;
+                osvrDestroyRenderManager(gRenderManager);
+                gRenderManager = gRenderManagerOGL = nullptr;
+                return false;
+            }
+
+            gRenderManagerInitialized = true;
+            return true;
+        } catch (const std::runtime_error &ex) {
+            LOGI("[OSVR] RenderManager initialization failed: %s", ex.what());
+            return false;
+        }
+    }
     static const GLfloat gTriangleColors[] = {
             // white
             1.0f, 1.0f, 1.0f, 1.0f,
@@ -803,7 +830,7 @@ namespace OSVROpenGL {
         gWidth = width;
         gHeight = height;
 
-        bool osvrSetupSuccess = setupOSVR();
+        //bool osvrSetupSuccess = setupOSVR();
 
         gProgram = createProgram(gVertexShader, gFragmentShader);
         if (!gProgram) {
@@ -838,13 +865,28 @@ namespace OSVROpenGL {
         LOGI("Creating texture... here we go!");
         gTextureID = createTexture(width, height);
 
-        return osvrSetupSuccess;
+        //return osvrSetupSuccess;
+        gGraphicsInitializedOnce = true;
+        return true;
     }
 
 /**
  * Just the current frame in the display.
  */
     static void renderFrame() {
+        if(!gOSVRInitialized) {
+            // @todo implement some logging/error handling?
+            return;
+        }
+
+        // this call is idempotent, so we can make it every frame.
+        // have to ensure render manager is setup from the rendering thread with
+        // a current GLES context, so this is a lazy setup call
+        if(!setupRenderManager()) {
+            // @todo implement some logging/error handling?
+            return;
+        }
+
         OSVR_ReturnCode rc;
         glUseProgram(gProgram);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1008,14 +1050,20 @@ namespace OSVROpenGL {
 }
 
 extern "C" {
-    JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_init(JNIEnv * env, jobject obj,  jint width, jint height);
+    JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_initGraphics(JNIEnv * env, jobject obj,  jint width, jint height);
+    JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_initOSVR(JNIEnv *env, jobject obj);
     JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_step(JNIEnv * env, jobject obj);
     JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_stop(JNIEnv * env, jobject obj);
 };
 
-JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_init(JNIEnv * env, jobject obj,  jint width, jint height)
+JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_initGraphics(JNIEnv * env, jobject obj,  jint width, jint height)
 {
     OSVROpenGL::setupGraphics(width, height);
+}
+
+JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_initOSVR(JNIEnv *env, jobject obj)
+{
+    OSVROpenGL::setupOSVR();
 }
 
 JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_step(JNIEnv * env, jobject obj)
