@@ -19,8 +19,12 @@
 
 package com.osvr.android.gles2sample;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import com.osvr.common.util.OSVRFileExtractor;
 
@@ -30,12 +34,40 @@ public class MainActivity extends Activity {
     public static final String TAG = "gles2sample";
     MainActivityView mView;
 
+    final private int REQUEST_CODE_ASK_PERMISSIONS = 111;
     @Override protected void onCreate(Bundle icicle) {
         Log.i(TAG, "MainActivity: onCreate()");
         super.onCreate(icicle);
-        OSVRFileExtractor.extractFiles(this);
         mView = new MainActivityView(getApplication());
-	    setContentView(mView);
+        setContentView(mView);
+
+        int hasExternalStoragePermission = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        if (hasExternalStoragePermission != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CODE_ASK_PERMISSIONS);
+            return;
+        }
+        proceedWithPermissions();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        switch (requestCode) {
+            case REQUEST_CODE_ASK_PERMISSIONS:
+            {
+                if(grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    proceedWithPermissions();
+                }
+            }
+            break;
+            default:
+                super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+
+    private void proceedWithPermissions()
+    {
+        OSVRFileExtractor.extractFiles(this);
+        mView.proceedWithPermissions();
         //openCamera();
     }
 

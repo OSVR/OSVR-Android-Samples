@@ -123,14 +123,14 @@ model {
 
         defaultConfig {
             applicationId = 'com.osvr.android.gles2sample'
-            minSdkVersion.apiLevel = 21
-            targetSdkVersion.apiLevel = 21
+            minSdkVersion.apiLevel = 23
+            targetSdkVersion.apiLevel = 25
             versionCode = 1
             versionName = '1.0'
         }
 
         ndk {
-            platformVersion = 21
+            platformVersion = 23
             moduleName = 'native-activity'
             toolchain = 'gcc'
             toolchainVersion = '4.9'
@@ -180,9 +180,34 @@ model {
                         library 'osvrServer' linkage 'shared'
                         library 'osvrRenderManager' linkage 'shared'
 //                        library 'jniImaging' linkage 'shared'
-//                        library 'sensorTracker' linkage 'shared'
-//                        library 'multiserver' linkage 'shared'
-//                        library 'oneeuro' linkage 'shared'
+                        library 'sensorTracker' linkage 'shared'
+                        library 'multiserver' linkage 'shared'
+                        library 'oneeuro' linkage 'shared'
+                    }
+                }
+                jniLibs {
+                    dependencies {
+                        library 'crystax'
+                        library 'gnustl'
+                        library 'jsoncpp'
+                        library 'usb1_0'
+                        library 'osvrUtil'
+                        library 'osvrCommon'
+                        library 'osvrClient'
+                        library 'osvrClientKit'
+                        library 'osvrJointClientKit'
+                        library 'osvrAnalysisPluginKit'
+                        library 'functionality'
+                        library 'osvrConnection'
+                        library 'osvrPluginHost'
+                        library 'osvrPluginKit'
+                        library 'osvrVRPNServer'
+                        library 'osvrServer'
+                        library 'osvrRenderManager'
+//                        library 'jniImaging'
+                        library 'sensorTracker'
+                        library 'multiserver'
+                        library 'oneeuro'
                     }
                 }
             }
