@@ -68,7 +68,6 @@ public class MainActivity extends Activity {
     {
         OSVRFileExtractor.extractFiles(this);
         mView.proceedWithPermissions();
-        //openCamera();
     }
 
     @Override protected void onPause() {

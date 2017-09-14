@@ -584,18 +584,18 @@ namespace OSVROpenGL {
                 }
 
 
-//                if (OSVR_RETURN_SUCCESS !=
-//                    osvrClientGetInterface(gClientContext, "/camera", &gCamera)) {
-//                    LOGI("Error, could not get the camera interface at /camera.");
-//                    return false;
-//                }
-//
-//                // Register the imaging callback.
-//                if (OSVR_RETURN_SUCCESS !=
-//                    osvrRegisterImagingCallback(gCamera, &imagingCallback, &gClientContext)) {
-//                    LOGI("Error, could not register image callback.");
-//                    return false;
-//                }
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/camera", &gCamera)) {
+                    LOGI("Error, could not get the camera interface at /camera.");
+                    return false;
+                }
+
+                // Register the imaging callback.
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterImagingCallback(gCamera, &imagingCallback, &gClientContext)) {
+                    LOGI("Error, could not register image callback.");
+                    return false;
+                }
             }
 
             gOSVRInitialized = true;
