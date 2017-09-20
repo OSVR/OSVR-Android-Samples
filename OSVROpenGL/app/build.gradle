@@ -89,14 +89,19 @@ model {
                     sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/libosvrRenderManager.so')
                 }
             }
-//            jniImaging {
-//                binaries.withType(SharedLibraryBinary) {
-//                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/libcom_osvr_android_jniImaging.so')
-//                }
-//            }
+            jniImaging {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/libcom_osvr_android_jniImaging.so')
+                }
+            }
             sensorTracker {
                 binaries.withType(SharedLibraryBinary) {
                     sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/libcom_osvr_android_sensorTracker.so')
+                }
+            }
+            moverio {
+                binaries.withType(SharedLibraryBinary) {
+                    sharedLibraryFile = file(System.getenv('OSVR_ANDROID') + '/lib/osvr-plugins-0/liborg_osvr_android_moverio.so')
                 }
             }
             multiserver {
@@ -123,14 +128,14 @@ model {
 
         defaultConfig {
             applicationId = 'com.osvr.android.gles2sample'
-            minSdkVersion.apiLevel = 23
+            minSdkVersion.apiLevel = 22
             targetSdkVersion.apiLevel = 25
             versionCode = 1
             versionName = '1.0'
         }
 
         ndk {
-            platformVersion = 23
+            platformVersion = 22
             moduleName = 'native-activity'
             toolchain = 'gcc'
             toolchainVersion = '4.9'
@@ -179,8 +184,9 @@ model {
                         library 'osvrVRPNServer' linkage 'shared'
                         library 'osvrServer' linkage 'shared'
                         library 'osvrRenderManager' linkage 'shared'
-//                        library 'jniImaging' linkage 'shared'
+                        library 'jniImaging' linkage 'shared'
                         library 'sensorTracker' linkage 'shared'
+                        library 'moverio' linkage 'shared'
                         library 'multiserver' linkage 'shared'
                         library 'oneeuro' linkage 'shared'
                     }
@@ -204,8 +210,9 @@ model {
                         library 'osvrVRPNServer'
                         library 'osvrServer'
                         library 'osvrRenderManager'
-//                        library 'jniImaging'
+                        library 'jniImaging'
                         library 'sensorTracker'
+                        library 'moverio'
                         library 'multiserver'
                         library 'oneeuro'
                     }

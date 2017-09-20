@@ -180,6 +180,16 @@ namespace OSVROpenGL {
     static OSVR_ClientContext gClientContext = NULL;
     static OSVR_ClientInterface gCamera = NULL;
     static OSVR_ClientInterface gHead = NULL;
+
+    static OSVR_ClientInterface gLeftButton = NULL;
+    static OSVR_ClientInterface gRightButton = NULL;
+    static OSVR_ClientInterface gUpButton = NULL;
+    static OSVR_ClientInterface gDownButton = NULL;
+    static OSVR_ClientInterface gCenterButton = NULL;
+    static OSVR_ClientInterface gBackButton = NULL;
+    static OSVR_ClientInterface gVolumeUpButton = NULL;
+    static OSVR_ClientInterface gVolumeDownButton = NULL;
+
     static int gReportNumber = 0;
     static OSVR_ImageBufferElement *gLastFrame = nullptr;
     static GLuint gLastFrameWidth = 0;
@@ -229,6 +239,7 @@ namespace OSVROpenGL {
             LOGI("after %s() glError (%s)\n", op, errorString.c_str());
         }
     }
+
 
     class PassThroughOpenGLContextImpl {
         OSVR_OpenGLToolkitFunctions toolkit;
@@ -456,6 +467,10 @@ namespace OSVROpenGL {
         gLastFrame = report->state.data;
     }
 
+    static void buttonCallback(void *userdata, const OSVR_TimeValue *timestamp, const OSVR_ButtonReport *report) {
+        LOGI("[main.cpp] Got button report");
+    }
+
     static bool setupRenderTextures(OSVR_RenderManager renderManager) {
         try {
             OSVR_ReturnCode rc;
@@ -577,31 +592,135 @@ namespace OSVROpenGL {
 
                 rc = osvrClientCheckStatus(gClientContext);
                 if (rc != OSVR_RETURN_SUCCESS) {
-                    LOGI("[OSVR] Client context reported bad status.");
+                    LOGE("[OSVR] Client context reported bad status.");
                     return false;
                 } else {
                     LOGI("[OSVR] Client context reported good status.");
                 }
 
 
-//                if (OSVR_RETURN_SUCCESS !=
-//                    osvrClientGetInterface(gClientContext, "/camera", &gCamera)) {
-//                    LOGI("Error, could not get the camera interface at /camera.");
-//                    return false;
-//                }
-//
-//                // Register the imaging callback.
-//                if (OSVR_RETURN_SUCCESS !=
-//                    osvrRegisterImagingCallback(gCamera, &imagingCallback, &gClientContext)) {
-//                    LOGI("Error, could not register image callback.");
-//                    return false;
-//                }
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/camera", &gCamera)) {
+                    LOGE("Error, could not get the camera interface at /camera.");
+                    return false;
+                }
+
+                // Register the imaging callback.
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterImagingCallback(gCamera, &imagingCallback, &gClientContext)) {
+                    LOGE("Error, could not register image callback.");
+                    return false;
+                }
+
+                // Center button
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/controller/left/0", &gCenterButton)) {
+                    LOGE("Error, could not get the button interface at /controller/left/0.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterButtonCallback(gCenterButton, &buttonCallback, &gClientContext)) {
+                    LOGE("Error, could not register button callback.");
+                    return false;
+                }
+
+                // Down button
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/controller/left/1", &gDownButton)) {
+                    LOGE("Error, could not get the button interface at /controller/left/1.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterButtonCallback(gDownButton, &buttonCallback, &gClientContext)) {
+                    LOGE("Error, could not register button callback.");
+                    return false;
+                }
+
+                // Right button
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/controller/left/2", &gRightButton)) {
+                    LOGE("Error, could not get the button interface at /controller/left/2.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterButtonCallback(gRightButton, &buttonCallback, &gClientContext)) {
+                    LOGE("Error, could not register button callback.");
+                    return false;
+                }
+
+                // Left button
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/controller/left/3", &gLeftButton)) {
+                    LOGE("Error, could not get the button interface at /controller/left/3.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterButtonCallback(gLeftButton, &buttonCallback, &gClientContext)) {
+                    LOGE("Error, could not register button callback.");
+                    return false;
+                }
+
+                // Up button
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/controller/left/4", &gUpButton)) {
+                    LOGE("Error, could not get the button interface at /controller/left/4.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterButtonCallback(gUpButton, &buttonCallback, &gClientContext)) {
+                    LOGE("Error, could not register button callback.");
+                    return false;
+                }
+
+                // Volume up button
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/controller/left/volumeUp", &gVolumeUpButton)) {
+                    LOGE("Error, could not get the button interface at /controller/left/volumeUp.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterButtonCallback(gVolumeUpButton, &buttonCallback, &gClientContext)) {
+                    LOGE("Error, could not register button callback.");
+                    return false;
+                }
+
+                // Volume Down button
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/controller/left/volumeDown", &gVolumeDownButton)) {
+                    LOGE("Error, could not get the button interface at /controller/left/volumeDown.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterButtonCallback(gVolumeDownButton, &buttonCallback, &gClientContext)) {
+                    LOGE("Error, could not register button callback.");
+                    return false;
+                }
+
+                // Back button
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/controller/left/back", &gBackButton)) {
+                    LOGE("Error, could not get the button interface at /controller/left/back.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterButtonCallback(gBackButton, &buttonCallback, &gClientContext)) {
+                    LOGE("Error, could not register button callback.");
+                    return false;
+                }
             }
 
             gOSVRInitialized = true;
             return true;
         } catch (const std::runtime_error &ex) {
-            LOGI("[OSVR] OSVR initialization failed: %s", ex.what());
+            LOGE("[OSVR] OSVR initialization failed: %s", ex.what());
             return false;
         }
     }

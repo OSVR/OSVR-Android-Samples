@@ -28,6 +28,7 @@ public class MainActivityJNILib {
     private static boolean librariesLoaded = false;
 
     static {
+        JNIBridge.enableCamera();
         JNIBridge.loadLibraries();
         System.loadLibrary("native-activity");
     }

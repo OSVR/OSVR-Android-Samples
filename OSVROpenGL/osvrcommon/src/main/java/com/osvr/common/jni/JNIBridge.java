@@ -21,36 +21,175 @@ package com.osvr.common.jni;
 
 // Wrapper for native library
 
+import android.graphics.SurfaceTexture;
+import android.hardware.Camera;
+import android.util.Log;
+import android.view.KeyEvent;
+
+import java.io.IOException;
+
 public class JNIBridge {
+    private static String TAG = "JNIBridge";
+    private static boolean sLibrariesLoaded = false;
+    private static boolean sPaused = false;
+    private static boolean sCameraEnabled = false;
+    private static boolean sIsMissingNativeButtonFuncs = false; // native button jni funcs may not be loaded
 
-    private static boolean librariesLoaded = false;
+    static SurfaceTexture sCameraTexture;
+    static int sCameraPreviewWidth = -1;
+    static int sCameraPreviewHeight = -1;
+    static Camera sCamera;
 
-     public static void loadLibraries() {
-         if(!librariesLoaded) {
-             System.loadLibrary("gnustl_shared");
-             System.loadLibrary("crystax");
-             System.loadLibrary("jsoncpp");
-             System.loadLibrary("usb1.0");
-             System.loadLibrary("osvrUtil");
-             System.loadLibrary("osvrCommon");
-             System.loadLibrary("osvrClient");
-             System.loadLibrary("osvrClientKit");
-             System.loadLibrary("functionality");
-             System.loadLibrary("osvrConnection");
-             System.loadLibrary("osvrPluginHost");
-             System.loadLibrary("osvrPluginKit");
-             System.loadLibrary("osvrVRPNServer");
-             System.loadLibrary("osvrServer");
-             System.loadLibrary("osvrJointClientKit");
-//             System.loadLibrary("com_osvr_android_jniImaging");
-             System.loadLibrary("com_osvr_android_sensorTracker");
-             System.loadLibrary("com_osvr_Multiserver");
-//             System.loadLibrary("org_osvr_filter_deadreckoningrotation");
-             System.loadLibrary("org_osvr_filter_oneeuro");
-             System.loadLibrary("native-activity");
-             librariesLoaded = true;
-         }
-     }
+    static Camera.PreviewCallback sPreviewCallback = new Camera.PreviewCallback() {
+        @Override
+        public void onPreviewFrame(byte[] data, Camera camera) {
+            //Log.d(TAG, "Got onPreviewFrame");
+            if(!sPaused) {
+                JNIBridge.reportFrame(
+                    data, sCameraPreviewWidth, sCameraPreviewHeight);
+            }
+        }
+    };
+
+    private static void setCameraParams() {
+        Camera.Parameters parms = sCamera.getParameters();
+        parms.setRecordingHint(true);
+        parms.setVideoStabilization(false);
+        parms.setPreviewSize(640, 480);
+        Camera.Size size = parms.getPreviewSize();
+        sCameraPreviewWidth = size.width;
+        sCameraPreviewHeight = size.height;
+        sCamera.setParameters(parms);
+
+        int[] fpsRange = new int[2];
+        Camera.Size mCameraPreviewSize = parms.getPreviewSize();
+        parms.getPreviewFpsRange(fpsRange);
+        String previewFacts = mCameraPreviewSize.width + "x" + mCameraPreviewSize.height;
+        if (fpsRange[0] == fpsRange[1]) {
+            previewFacts += " @" + (fpsRange[0] / 1000.0) + "fps";
+        } else {
+            previewFacts += " @[" + (fpsRange[0] / 1000.0) +
+                    " - " + (fpsRange[1] / 1000.0) + "] fps";
+        }
+        Log.i(TAG, "Camera config: " + previewFacts);
+
+        sCameraPreviewWidth = mCameraPreviewSize.width;
+        sCameraPreviewHeight = mCameraPreviewSize.height;
+    }
+
+    private static void openCamera() {
+        if(sCameraEnabled && sCamera == null) {
+            sCameraTexture = new SurfaceTexture(123);
+            sCamera = Camera.open();
+            setCameraParams();
+            try {
+                sCamera.setPreviewTexture(sCameraTexture);
+            } catch (IOException ex) {
+                Log.d(TAG, "Error on setPreviewTexture: " + ex.getMessage());
+                throw new RuntimeException("error during setPreviewTexture");
+            }
+            //mCamera.setPreviewCallbackWithBuffer(this);
+            sCamera.setPreviewCallback(sPreviewCallback);
+            sCamera.startPreview();
+        }
+    }
+
+    protected static void stopCamera() {
+        if(sCamera != null) {
+            sCamera.setPreviewCallback(null);
+            sCamera.stopPreview();
+            sCamera.release();
+            sCamera = null;
+        }
+    }
+
+    public static void enableCamera() {
+        sCameraEnabled = true;
+    }
+
+    public static void disableCamera() {
+        sCameraEnabled = false;
+        stopCamera();
+    }
+
+    public static void onResume() {
+        sPaused = false;
+        openCamera();
+    }
+
+    public static void onStop() {
+        sPaused = true;
+        stopCamera();
+    }
+
+    public static void onPause() {
+        sPaused = true;
+        stopCamera();
+    }
+
+    public static boolean onKeyDown(int keyCode, KeyEvent keyEvent) {
+        // The native code to push key down events might not be loaded,
+        // we'll try to call it and gracefully recover if we fail.
+        // After a failure, we'll stop trying
+        if(sIsMissingNativeButtonFuncs) {
+            return false;
+        }
+        try {
+            reportKeyDown(keyCode);
+            return true;
+        } catch(Exception e) { // @TODO: narrow down this exception?
+            sIsMissingNativeButtonFuncs = true;
+            return false;
+        }
+    }
+
+    public static boolean onKeyUp(int keyCode, KeyEvent keyEvent) {
+        // The native code to push key down events might not be loaded,
+        // we'll try to call it and gracefully recover if we fail.
+        // After a failure, we'll stop trying
+        if(sIsMissingNativeButtonFuncs) {
+            return false;
+        }
+        try {
+            reportKeyUp(keyCode);
+            return true;
+        } catch(Exception e) { // @TODO: narrow down this exception?
+            sIsMissingNativeButtonFuncs = true;
+            return false;
+        }
+    }
+
+    public static void onSurfaceChanged() {
+        openCamera();
+    }
+
+    public static void loadLibraries() {
+        if(!sLibrariesLoaded) {
+            System.loadLibrary("gnustl_shared");
+            System.loadLibrary("crystax");
+            System.loadLibrary("jsoncpp");
+            System.loadLibrary("usb1.0");
+            System.loadLibrary("osvrUtil");
+            System.loadLibrary("osvrCommon");
+            System.loadLibrary("osvrClient");
+            System.loadLibrary("osvrClientKit");
+            System.loadLibrary("functionality");
+            System.loadLibrary("osvrConnection");
+            System.loadLibrary("osvrPluginHost");
+            System.loadLibrary("osvrPluginKit");
+            System.loadLibrary("osvrVRPNServer");
+            System.loadLibrary("osvrServer");
+            System.loadLibrary("osvrJointClientKit");
+            System.loadLibrary("com_osvr_android_jniImaging");
+            System.loadLibrary("com_osvr_android_sensorTracker");
+            System.loadLibrary("org_osvr_android_moverio");
+            System.loadLibrary("com_osvr_Multiserver");
+            //System.loadLibrary("org_osvr_filter_deadreckoningrotation");
+            System.loadLibrary("org_osvr_filter_oneeuro");
+            System.loadLibrary("native-activity");
+            sLibrariesLoaded = true;
+        }
+    }
     static {
         loadLibraries();
     }
@@ -58,5 +197,8 @@ public class JNIBridge {
      * @param width the current view width
      * @param height the current view height
      */
-     public static native void reportFrame(byte[] data, long width, long height);
+    public static native void reportFrame(byte[] data, long width, long height);
+
+    public static native void reportKeyDown(int keyCode); // might change the signature
+    public static native void reportKeyUp(int keyUp); // might change the signature
 }

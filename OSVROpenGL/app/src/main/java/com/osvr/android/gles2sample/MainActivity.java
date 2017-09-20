@@ -26,10 +26,15 @@ import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
+import android.view.KeyEvent;
+import android.view.View;
+
+import com.osvr.common.jni.JNIBridge;
+import com.osvr.common.jni.OSVRActivity;
 import com.osvr.common.util.OSVRFileExtractor;
 
 
-public class MainActivity extends Activity {
+public class MainActivity extends OSVRActivity {
 
     public static final String TAG = "gles2sample";
     MainActivityView mView;
@@ -40,6 +45,12 @@ public class MainActivity extends Activity {
         super.onCreate(icicle);
         mView = new MainActivityView(getApplication());
         setContentView(mView);
+
+        View view = this.getWindow().getDecorView();
+        view.setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_IMMERSIVE);
 
         int hasExternalStoragePermission = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
         if (hasExternalStoragePermission != PackageManager.PERMISSION_GRANTED) {
@@ -68,7 +79,6 @@ public class MainActivity extends Activity {
     {
         OSVRFileExtractor.extractFiles(this);
         mView.proceedWithPermissions();
-        //openCamera();
     }
 
     @Override protected void onPause() {
