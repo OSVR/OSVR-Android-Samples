@@ -24,6 +24,7 @@ package com.osvr.common.jni;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.util.Log;
+import android.view.KeyEvent;
 
 import java.io.IOException;
 
@@ -32,6 +33,8 @@ public class JNIBridge {
     private static boolean sLibrariesLoaded = false;
     private static boolean sPaused = false;
     private static boolean sCameraEnabled = false;
+    private static boolean sIsMissingNativeButtonFuncs = false; // native button jni funcs may not be loaded
+
     static SurfaceTexture sCameraTexture;
     static int sCameraPreviewWidth = -1;
     static int sCameraPreviewHeight = -1;
@@ -124,6 +127,38 @@ public class JNIBridge {
         stopCamera();
     }
 
+    public static boolean onKeyDown(int keyCode, KeyEvent keyEvent) {
+        // The native code to push key down events might not be loaded,
+        // we'll try to call it and gracefully recover if we fail.
+        // After a failure, we'll stop trying
+        if(sIsMissingNativeButtonFuncs) {
+            return false;
+        }
+        try {
+            reportKeyDown(keyCode);
+            return true;
+        } catch(Exception e) { // @TODO: narrow down this exception?
+            sIsMissingNativeButtonFuncs = true;
+            return false;
+        }
+    }
+
+    public static boolean onKeyUp(int keyCode, KeyEvent keyEvent) {
+        // The native code to push key down events might not be loaded,
+        // we'll try to call it and gracefully recover if we fail.
+        // After a failure, we'll stop trying
+        if(sIsMissingNativeButtonFuncs) {
+            return false;
+        }
+        try {
+            reportKeyUp(keyCode);
+            return true;
+        } catch(Exception e) { // @TODO: narrow down this exception?
+            sIsMissingNativeButtonFuncs = true;
+            return false;
+        }
+    }
+
     public static void onSurfaceChanged() {
         openCamera();
     }
@@ -147,6 +182,7 @@ public class JNIBridge {
             System.loadLibrary("osvrJointClientKit");
             System.loadLibrary("com_osvr_android_jniImaging");
             System.loadLibrary("com_osvr_android_sensorTracker");
+            System.loadLibrary("org_osvr_android_moverio");
             System.loadLibrary("com_osvr_Multiserver");
             //System.loadLibrary("org_osvr_filter_deadreckoningrotation");
             System.loadLibrary("org_osvr_filter_oneeuro");
@@ -161,5 +197,8 @@ public class JNIBridge {
      * @param width the current view width
      * @param height the current view height
      */
-     public static native void reportFrame(byte[] data, long width, long height);
+    public static native void reportFrame(byte[] data, long width, long height);
+
+    public static native void reportKeyDown(int keyCode); // might change the signature
+    public static native void reportKeyUp(int keyUp); // might change the signature
 }
