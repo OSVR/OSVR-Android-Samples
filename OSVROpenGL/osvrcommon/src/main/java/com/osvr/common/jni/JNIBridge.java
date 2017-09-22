@@ -24,7 +24,9 @@ package com.osvr.common.jni;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.util.Log;
+import android.view.InputDevice;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 
 import java.io.IOException;
 
@@ -127,6 +129,67 @@ public class JNIBridge {
         stopCamera();
     }
 
+    private static int sTrackedPointerId = -1;
+    public static boolean onTouchEvent(MotionEvent motionEvent) {
+        if(sIsMissingNativeButtonFuncs) {
+            return false;
+        }
+        try {
+            int action = motionEvent.getAction();
+//            Log.i(TAG, String.format("MotionEvent action: %s", MotionEvent.actionToString(action)));
+
+            if(action != MotionEvent.ACTION_DOWN && action != MotionEvent.ACTION_MOVE) {
+                return false;
+            }
+
+            if(motionEvent.getPointerCount() == 0) {
+                sTrackedPointerId = -1;
+                return false;
+            }
+
+            if(sTrackedPointerId < 0) {
+                // get the first pointer id of the first pointer index and keep
+                // tracking that until it goes out of scope
+                sTrackedPointerId = motionEvent.getPointerId(0);
+            }
+
+            // if the pointer id we were tracking is still available, get its index
+            int pointerIndex = motionEvent.findPointerIndex(sTrackedPointerId);
+
+            // if it's not still available, update the tracked pointer id
+            if(pointerIndex < 0) {
+                pointerIndex = 0;
+                sTrackedPointerId = motionEvent.getPointerId(pointerIndex);
+            }
+
+            int eventSource = motionEvent.getSource();
+            int inputDeviceId = motionEvent.getDeviceId();
+            InputDevice inputDevice = InputDevice.getDevice(inputDeviceId);
+
+            float x = motionEvent.getX(pointerIndex);
+            InputDevice.MotionRange xRange = inputDevice.getMotionRange(MotionEvent.AXIS_X, eventSource);
+
+            float y = motionEvent.getY(pointerIndex);
+            InputDevice.MotionRange yRange = inputDevice.getMotionRange(MotionEvent.AXIS_Y, eventSource);
+
+//            Log.i(TAG, String.format("x: %f, y: %f, xMin: %f, xMax: %f, yMin: %f, yMax: %f",
+//                    x, y,
+//                    xRange.getMin(), xRange.getMax(),
+//                    yRange.getMin(), yRange.getMax()));
+
+            reportMouse(x, y,
+                    xRange == null ? 0 : xRange.getMin(),
+                    xRange == null ? 0 : xRange.getMax(),
+                    yRange == null ? 0 : yRange.getMin(),
+                    yRange == null ? 0 : yRange.getMax());
+
+            return true;
+        } catch(Exception e) {
+            sIsMissingNativeButtonFuncs = true;
+            return false;
+        }
+    }
+
     public static boolean onKeyDown(int keyCode, KeyEvent keyEvent) {
         // The native code to push key down events might not be loaded,
         // we'll try to call it and gracefully recover if we fail.
@@ -201,4 +264,5 @@ public class JNIBridge {
 
     public static native void reportKeyDown(int keyCode); // might change the signature
     public static native void reportKeyUp(int keyUp); // might change the signature
+    public static native void reportMouse(float x, float y, float minX, float maxX, float minY, float maxY);
 }

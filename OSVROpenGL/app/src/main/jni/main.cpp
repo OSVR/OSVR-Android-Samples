@@ -190,6 +190,8 @@ namespace OSVROpenGL {
     static OSVR_ClientInterface gVolumeUpButton = NULL;
     static OSVR_ClientInterface gVolumeDownButton = NULL;
 
+    static OSVR_ClientInterface gMouseLocation2D = NULL;
+
     static int gReportNumber = 0;
     static OSVR_ImageBufferElement *gLastFrame = nullptr;
     static GLuint gLastFrameWidth = 0;
@@ -471,6 +473,11 @@ namespace OSVROpenGL {
         LOGI("[main.cpp] Got button report");
     }
 
+    static void location2DCallback(void *userdata, const OSVR_TimeValue *timestamp, const OSVR_Location2DReport *report) {
+        LOGI("[main.cpp] Got analog report: x: %f", report->location.data[0]);
+        LOGI(" - y: %f", report->location.data[1]);
+    }
+
     static bool setupRenderTextures(OSVR_RenderManager renderManager) {
         try {
             OSVR_ReturnCode rc;
@@ -713,6 +720,19 @@ namespace OSVROpenGL {
                 if (OSVR_RETURN_SUCCESS !=
                     osvrRegisterButtonCallback(gBackButton, &buttonCallback, &gClientContext)) {
                     LOGE("Error, could not register button callback.");
+                    return false;
+                }
+
+                // Mouse
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/mouse", &gMouseLocation2D)) {
+                    LOGE("Error, could not get the analog interface at /mouse/x.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterLocation2DCallback(gMouseLocation2D, &location2DCallback, &gClientContext)) {
+                    LOGE("Error, could not register analog callback.");
                     return false;
                 }
             }
