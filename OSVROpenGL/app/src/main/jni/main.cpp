@@ -190,6 +190,9 @@ namespace OSVROpenGL {
     static OSVR_ClientInterface gVolumeUpButton = NULL;
     static OSVR_ClientInterface gVolumeDownButton = NULL;
 
+    static OSVR_ClientInterface gMouseXAnalog = NULL;
+    static OSVR_ClientInterface gMouseYAnalog = NULL;
+
     static int gReportNumber = 0;
     static OSVR_ImageBufferElement *gLastFrame = nullptr;
     static GLuint gLastFrameWidth = 0;
@@ -471,6 +474,10 @@ namespace OSVROpenGL {
         LOGI("[main.cpp] Got button report");
     }
 
+    static void analogCallback(void *userdata, const OSVR_TimeValue *timestamp, const OSVR_AnalogReport *report) {
+        LOGI("[main.cpp] Got analog report: %f", report->state);
+    }
+
     static bool setupRenderTextures(OSVR_RenderManager renderManager) {
         try {
             OSVR_ReturnCode rc;
@@ -713,6 +720,32 @@ namespace OSVROpenGL {
                 if (OSVR_RETURN_SUCCESS !=
                     osvrRegisterButtonCallback(gBackButton, &buttonCallback, &gClientContext)) {
                     LOGE("Error, could not register button callback.");
+                    return false;
+                }
+
+                // MouseX
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/mouse/x", &gMouseXAnalog)) {
+                    LOGE("Error, could not get the analog interface at /mouse/x.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterAnalogCallback(gMouseXAnalog, &analogCallback, &gClientContext)) {
+                    LOGE("Error, could not register analog callback.");
+                    return false;
+                }
+
+                // MouseY
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrClientGetInterface(gClientContext, "/mouse/y", &gMouseYAnalog)) {
+                    LOGE("Error, could not get the analog interface at /mouse/y.");
+                    return false;
+                }
+
+                if (OSVR_RETURN_SUCCESS !=
+                    osvrRegisterAnalogCallback(gMouseYAnalog, &analogCallback, &gClientContext)) {
+                    LOGE("Error, could not register analog callback.");
                     return false;
                 }
             }

@@ -45,6 +45,8 @@ import android.hardware.Camera;
 import android.opengl.EGL14;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
+import android.view.MotionEvent;
+
 import java.io.IOException;
 
 import javax.microedition.khronos.egl.EGL;
@@ -105,6 +107,10 @@ class MainActivityView extends GLSurfaceView {// implements Camera.PreviewCallba
     public void onResume() {
         mPaused = false;
         JNIBridge.onResume();
+    }
+
+    public boolean onTouchEvent(MotionEvent motionEvent) {
+        return JNIBridge.onTouchEvent(motionEvent);
     }
 
     public void proceedWithPermissions() {
