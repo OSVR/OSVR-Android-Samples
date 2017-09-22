@@ -190,8 +190,7 @@ namespace OSVROpenGL {
     static OSVR_ClientInterface gVolumeUpButton = NULL;
     static OSVR_ClientInterface gVolumeDownButton = NULL;
 
-    static OSVR_ClientInterface gMouseXAnalog = NULL;
-    static OSVR_ClientInterface gMouseYAnalog = NULL;
+    static OSVR_ClientInterface gMouseLocation2D = NULL;
 
     static int gReportNumber = 0;
     static OSVR_ImageBufferElement *gLastFrame = nullptr;
@@ -474,8 +473,9 @@ namespace OSVROpenGL {
         LOGI("[main.cpp] Got button report");
     }
 
-    static void analogCallback(void *userdata, const OSVR_TimeValue *timestamp, const OSVR_AnalogReport *report) {
-        LOGI("[main.cpp] Got analog report: %f", report->state);
+    static void location2DCallback(void *userdata, const OSVR_TimeValue *timestamp, const OSVR_Location2DReport *report) {
+        LOGI("[main.cpp] Got analog report: x: %f", report->location.data[0]);
+        LOGI(" - y: %f", report->location.data[1]);
     }
 
     static bool setupRenderTextures(OSVR_RenderManager renderManager) {
@@ -723,28 +723,15 @@ namespace OSVROpenGL {
                     return false;
                 }
 
-                // MouseX
+                // Mouse
                 if (OSVR_RETURN_SUCCESS !=
-                    osvrClientGetInterface(gClientContext, "/mouse/x", &gMouseXAnalog)) {
+                    osvrClientGetInterface(gClientContext, "/mouse", &gMouseLocation2D)) {
                     LOGE("Error, could not get the analog interface at /mouse/x.");
                     return false;
                 }
 
                 if (OSVR_RETURN_SUCCESS !=
-                    osvrRegisterAnalogCallback(gMouseXAnalog, &analogCallback, &gClientContext)) {
-                    LOGE("Error, could not register analog callback.");
-                    return false;
-                }
-
-                // MouseY
-                if (OSVR_RETURN_SUCCESS !=
-                    osvrClientGetInterface(gClientContext, "/mouse/y", &gMouseYAnalog)) {
-                    LOGE("Error, could not get the analog interface at /mouse/y.");
-                    return false;
-                }
-
-                if (OSVR_RETURN_SUCCESS !=
-                    osvrRegisterAnalogCallback(gMouseYAnalog, &analogCallback, &gClientContext)) {
+                    osvrRegisterLocation2DCallback(gMouseLocation2D, &location2DCallback, &gClientContext)) {
                     LOGE("Error, could not register analog callback.");
                     return false;
                 }
