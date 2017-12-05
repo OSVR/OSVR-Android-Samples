@@ -26,6 +26,7 @@ import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
+import android.view.Display;
 import android.view.KeyEvent;
 import android.view.View;
 
@@ -38,12 +39,14 @@ public class MainActivity extends OSVRActivity {
 
     public static final String TAG = "gles2sample";
     MainActivityView mView;
+    Display mMainDisplay;
 
     final private int REQUEST_CODE_ASK_PERMISSIONS = 111;
     @Override protected void onCreate(Bundle icicle) {
         Log.i(TAG, "MainActivity: onCreate()");
         super.onCreate(icicle);
-        mView = new MainActivityView(getApplication());
+        mMainDisplay = getWindowManager().getDefaultDisplay();
+        mView = new MainActivityView(getApplication(), mMainDisplay);
         setContentView(mView);
 
         View view = this.getWindow().getDecorView();

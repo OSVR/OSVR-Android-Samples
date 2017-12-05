@@ -25,14 +25,18 @@
 #include <stdexcept>
 #include <chrono>
 #include <thread>
+#include <mutex>
 #include <vector>
 #include <sstream>
 
 #include <dlfcn.h>
+#include <time.h>
 
 //#include <boost/filesystem.hpp>
 
 //#define GL_GLEXT_PROTOTYPES 1
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
@@ -49,6 +53,8 @@
 
 #include <jni.h>
 #include <android/log.h>
+#include <android/choreographer.h>
+#include <android/looper.h>
 
 #define  LOG_TAG    "libgl2jni"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
@@ -133,6 +139,12 @@ namespace OSVROpenGL {
         GLuint renderBufferName; // @todo - do we need this?
     } OSVR_RenderTargetInfo;
 
+    inline void nanoSecondsToTimeValue(uint64_t nanos, OSVR_TimeValue *tvOut) {
+        tvOut->seconds = 0;
+        tvOut->microseconds = nanos / 1000;
+        osvrTimeValueNormalize(tvOut);
+    }
+
     static const char gVertexShader[] =
             "uniform mat4 model;\n"
                     "uniform mat4 view;\n"
@@ -176,6 +188,7 @@ namespace OSVROpenGL {
     // OSVR globals
     static bool gOSVRInitialized = false;
     static bool gRenderManagerInitialized = false;
+    static bool gRenderManagerInitializationFailed = false;
     //static OSVR_DisplayConfig gOSVRDisplayConfig;
     static OSVR_ClientContext gClientContext = NULL;
     static OSVR_ClientInterface gCamera = NULL;
@@ -242,11 +255,55 @@ namespace OSVROpenGL {
         }
     }
 
+    long gPreviousFrameTimeNanos = 0;
+    long gLastFrameTimeNanos = 0;
+    std::mutex gFrameTimeMutex;
+
+    static void frameCallbackImpl(long frameTimeNanos, void *data) {
+        std::lock_guard<std::mutex> lockGuard(gFrameTimeMutex);
+        gPreviousFrameTimeNanos = gLastFrameTimeNanos;
+        gLastFrameTimeNanos = frameTimeNanos;
+        //LOGI("frameTimeNanos: %d", frameTimeNanos);
+        //LOGI("diff: %d", frameTimeNanos - gPreviousFrameTimeNanos);
+        AChoreographer* choreographer = AChoreographer_getInstance();
+        if(!choreographer) {
+            LOGE("Couldn't get the choreographer from the frame callback");
+        }
+        AChoreographer_postFrameCallback(choreographer, frameCallbackImpl, nullptr);
+    }
+
+    static void choreographerThreadRun() {
+        ALooper* looper = ALooper_forThread();
+        if(!looper) {
+            looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
+            if(!looper) {
+                LOGE("Couldn't prepare an ALooper for the choreographer thread");
+                return;
+            }
+        }
+
+        AChoreographer* choreographer = AChoreographer_getInstance();
+        if(!choreographer) {
+            LOGE("Could not get choreographer.");
+            return;
+        }
+
+        AChoreographer_postFrameCallback(choreographer, frameCallbackImpl, nullptr);
+
+        while(true) {
+            int fd_unused = 0;
+            int outEvents_unused = 0;
+            void *outData_unused = nullptr;
+            int rc = ALooper_pollAll(100, &fd_unused, &outEvents_unused, &outData_unused);
+        }
+    }
 
     class PassThroughOpenGLContextImpl {
         OSVR_OpenGLToolkitFunctions toolkit;
         int mWidth;
         int mHeight;
+
+        std::thread mChoreographerThread;
 
         static void createImpl(void* data) {
         }
@@ -277,10 +334,12 @@ namespace OSVROpenGL {
         static OSVR_CBool getDisplaySizeOverrideImpl(void* data, size_t display, int* width, int* height) {
             return ((PassThroughOpenGLContextImpl*)data)->getDisplaySizeOverride(display, width, height);
         }
-
+        static OSVR_CBool getRenderTimingInfoImpl(void* data, size_t display, size_t whichEye, OSVR_RenderTimingInfo* renderTimingInfoOut) {
+            return ((PassThroughOpenGLContextImpl*)data)->getRenderTimingInfo(display, whichEye, renderTimingInfoOut);
+        }
 
     public:
-        PassThroughOpenGLContextImpl() {
+        PassThroughOpenGLContextImpl() : mChoreographerThread(choreographerThreadRun) {
             memset(&toolkit, 0, sizeof(toolkit));
             toolkit.size = sizeof(toolkit);
             toolkit.data = this;
@@ -295,6 +354,7 @@ namespace OSVROpenGL {
             toolkit.handleEvents = handleEventsImpl;
             toolkit.getDisplaySizeOverride = getDisplaySizeOverrideImpl;
             toolkit.getDisplayFrameBuffer = getDisplayFrameBufferImpl;
+            toolkit.getRenderTimingInfo = getRenderTimingInfoImpl;
         }
 
         ~PassThroughOpenGLContextImpl() {
@@ -314,7 +374,20 @@ namespace OSVROpenGL {
             return true;
         }
 
-        bool swapBuffers(size_t display) {
+        bool swapBuffers(size_t display_unused) {
+            EGLDisplay display = eglGetCurrentDisplay();
+            EGLSurface surface = eglGetCurrentSurface(EGL_DRAW);
+            //checkEglError("After eglGetCurrentSurface"/*, egl*/);
+//            if(!singleBufferEnabled) {
+//                if (!eglSurfaceAttrib(display, surface, EGL_RENDER_BUFFER, EGL_SINGLE_BUFFER)) {
+//                    LOGE("eglSurfaceAttrib failed");
+//                } else {
+//                    eglSwapBuffers(display, surface);
+//                }
+//                singleBufferEnabled = true;
+//            }
+//            glFinish();
+            eglSwapBuffers(display, surface);
             return true;
         }
 
@@ -333,6 +406,30 @@ namespace OSVROpenGL {
         bool getDisplaySizeOverride(size_t display, int* width, int* height) {
             *width = gWidth;
             *height = gHeight;
+            return false;
+        }
+
+        bool getRenderTimingInfo(size_t display, size_t whichEye, OSVR_RenderTimingInfo* renderTimingInfoOut) {
+
+            timespec tp;
+            int rv = clock_gettime(CLOCK_MONOTONIC, &tp);
+            if(!rv) {
+                std::lock_guard<std::mutex> lockGuard(gFrameTimeMutex);
+                //uint64_t presentationDeadline = 17683333L; // Shouldn't this bee at least less than 16,666,666? (1 billion / 60)
+                // that's 1,016,666 nanoseconds greater than the hardware interval
+                //uint64_t hardwareDisplayIntervalNanos = 11111111L; // 90Hz hard coded, TODO measure this or get it from the API?
+                uint64_t hardwareDisplayIntervalNanos = gLastFrameTimeNanos - gPreviousFrameTimeNanos;
+                uint64_t nowNanos = ((tp.tv_sec * 1000000000L) + tp.tv_nsec);
+                uint64_t timeFromLastNanos = nowNanos >= gLastFrameTimeNanos ? nowNanos - gLastFrameTimeNanos : 0; // just being safe
+                uint64_t nextNanos = gLastFrameTimeNanos + hardwareDisplayIntervalNanos;
+                uint64_t timeUntilNextNanos = nextNanos >= nowNanos ? nextNanos - nowNanos : 0; // 0 here means we missed a vsync
+
+                nanoSecondsToTimeValue(timeFromLastNanos, &renderTimingInfoOut->timeSincelastVerticalRetrace);
+                nanoSecondsToTimeValue(timeUntilNextNanos, &renderTimingInfoOut->timeUntilNextPresentRequired);
+                nanoSecondsToTimeValue(hardwareDisplayIntervalNanos, &renderTimingInfoOut->hardwareDisplayInterval);
+                return true;
+            }
+            LOGI("clock_gettime call failed.");
             return false;
         }
     };
@@ -492,14 +589,27 @@ namespace OSVROpenGL {
             rc = osvrRenderManagerStartRegisterRenderBuffers(&state);
             checkReturnCode(rc, "osvrRenderManagerStartRegisterRenderBuffers call failed.");
 
-            for (OSVR_RenderInfoCount i = 0; i < renderInfo.getNumRenderInfo(); i++) {
-                OSVR_RenderInfoOpenGL currentRenderInfo = renderInfo.getRenderInfo(i);
+            if(renderInfo.getNumRenderInfo() != 2) {
+                LOGE("setupRenderTextures: expected numRenderInfo to be 2");
+                return false;
+            }
 
-                // Determine the appropriate size for the frame buffer to be used for
-                // all eyes when placed horizontally size by side.
-                int width = static_cast<int>(currentRenderInfo.viewport.width);
-                int height = static_cast<int>(currentRenderInfo.viewport.height);
+            //for (OSVR_RenderInfoCount i = 0; i < renderInfo.getNumRenderInfo(); i++) {
+            OSVR_RenderInfoOpenGL leftEyeRenderInfo = renderInfo.getRenderInfo(0);
+            OSVR_RenderInfoOpenGL rightEyeRenderInfo = renderInfo.getRenderInfo(1);
 
+            if(leftEyeRenderInfo.viewport.height != rightEyeRenderInfo.viewport.height) {
+                LOGE("setupRenderTextures: expected left and right eye viewports to be the same height");
+                return false;
+            }
+            // Determine the appropriate size for the frame buffer to be used for
+            // all eyes when placed horizontally size by side.
+//                int width = static_cast<int>(currentRenderInfo.viewport.width);
+//                int height = static_cast<int>(currentRenderInfo.viewport.height);
+            int width = static_cast<int>(leftEyeRenderInfo.viewport.width + rightEyeRenderInfo.viewport.height);
+            int height = static_cast<int>(leftEyeRenderInfo.viewport.height);
+
+            for(int i = 0; i < 2; i++) {
                 GLuint frameBufferName = 0;
                 glGenFramebuffers(1, &frameBufferName);
                 glBindFramebuffer(GL_FRAMEBUFFER, frameBufferName);
@@ -545,6 +655,7 @@ namespace OSVROpenGL {
                 rc = osvrRenderManagerRegisterRenderBufferOpenGL(state, buffer);
                 checkReturnCode(rc, "osvrRenderManagerRegisterRenderBufferOpenGL call failed.");
 
+
                 OSVR_RenderTargetInfo renderTarget = {0};
                 renderTarget.frameBufferName = frameBufferName;
                 renderTarget.renderBufferName = renderBufferName;
@@ -575,7 +686,7 @@ namespace OSVROpenGL {
 //            LOGI("[OSVR] Current working directory: %s", workingDirectory.string().c_str());
 
             // auto-start the server
-            osvrClientAttemptServerAutoStart();
+            //osvrClientAttemptServerAutoStart();
 
             if (!gClientContext) {
                 LOGI("[OSVR] Creating ClientContext...");
@@ -747,7 +858,7 @@ namespace OSVROpenGL {
 
     // Idempotent call to setup render manager
     static bool setupRenderManager() {
-        if(!gOSVRInitialized || !gGraphicsInitializedOnce) {
+        if(!gOSVRInitialized || !gGraphicsInitializedOnce || gRenderManagerInitializationFailed) {
             return false;
         }
         if(gRenderManagerInitialized) {
@@ -1013,7 +1124,7 @@ namespace OSVROpenGL {
  * Just the current frame in the display.
  */
     static void renderFrame() {
-        if(!gOSVRInitialized) {
+        if(!gOSVRInitialized || gRenderManagerInitializationFailed) {
             // @todo implement some logging/error handling?
             return;
         }
@@ -1023,28 +1134,11 @@ namespace OSVROpenGL {
         // a current GLES context, so this is a lazy setup call
         if(!setupRenderManager()) {
             // @todo implement some logging/error handling?
+            gRenderManagerInitializationFailed = true;
             return;
         }
 
         OSVR_ReturnCode rc;
-        glUseProgram(gProgram);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        checkGlError("glClearColor");
-        glViewport(0, 0, gWidth, gHeight);
-        glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-        checkGlError("glClear");
-
-        GLint maxVertexAttribs;
-        glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &maxVertexAttribs);
-
-        for(GLuint i = 0; i < maxVertexAttribs; i++) {
-            glDisableVertexAttribArray(static_cast<GLuint>(i));
-        }
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-        //bindVertexArrayOES(0);
 
         if (gRenderManager && gClientContext) {
             osvrClientUpdate(gClientContext);
@@ -1065,6 +1159,25 @@ namespace OSVROpenGL {
             rc = osvrRenderManagerStartPresentRenderBuffers(&presentState);
             checkReturnCode(rc, "osvrRenderManagerStartPresentRenderBuffers call failed.");
 
+            static size_t sFrameNumber = 0;
+            size_t currentRenderTargetIndex = sFrameNumber % 2;
+            OSVR_RenderTargetInfo renderTargetInfo = gRenderTargets[currentRenderTargetIndex];
+            sFrameNumber++;
+
+            // Set color and depth buffers for the frame buffer
+            glBindFramebuffer(GL_FRAMEBUFFER, renderTargetInfo.frameBufferName);
+
+            glViewport(0, 0, gWidth, gHeight);
+
+            //if(renderInfoCount == 0) {
+            //    glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+            //} else {
+            glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+            //}
+            checkGlError("glClearColor");
+            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+            checkGlError("glClear");
+
             for(OSVR_RenderInfoCount renderInfoCount = 0;
                 renderInfoCount < renderInfoCollection.getNumRenderInfo();
                 renderInfoCount++) {
@@ -1082,20 +1195,27 @@ namespace OSVROpenGL {
                     viewMat[i] = static_cast<GLfloat>(viewMatd[i]);
                 }
 
-                // Set color and depth buffers for the frame buffer
-                OSVR_RenderTargetInfo renderTargetInfo = gRenderTargets[renderInfoCount];
-                glBindFramebuffer(GL_FRAMEBUFFER, renderTargetInfo.frameBufferName);
+//                glViewport(static_cast<GLint>(currentRenderInfo.viewport.left),
+//                           static_cast<GLint>(currentRenderInfo.viewport.lower),
+//                           static_cast<GLsizei>(currentRenderInfo.viewport.width),
+//                           static_cast<GLsizei>(currentRenderInfo.viewport.height));
 
-                // @todo: convert to OpenGL?
-                glViewport(static_cast<GLint>(currentRenderInfo.viewport.left),
+                glViewport(static_cast<GLint>(renderInfoCount == 0 ? 0 : currentRenderInfo.viewport.width),
                            static_cast<GLint>(currentRenderInfo.viewport.lower),
                            static_cast<GLsizei>(currentRenderInfo.viewport.width),
                            static_cast<GLsizei>(currentRenderInfo.viewport.height));
 
-//                glViewport(static_cast<GLint>(renderInfoCount == 0 ? 0 : currentRenderInfo.viewport.width),
-//                           static_cast<GLint>(currentRenderInfo.viewport.lower),
-//                           static_cast<GLsizei>(currentRenderInfo.viewport.width),
-//                           static_cast<GLsizei>(currentRenderInfo.viewport.height));
+                glUseProgram(gProgram);
+
+                GLint maxVertexAttribs;
+                glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &maxVertexAttribs);
+
+                for(GLuint i = 0; i < maxVertexAttribs; i++) {
+                    glDisableVertexAttribArray(static_cast<GLuint>(i));
+                }
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+                //bindVertexArrayOES(0);
 
                 /// Set the OpenGL projection matrix
                 double projMatd[OSVR_MATRIX_SIZE];
@@ -1145,14 +1265,11 @@ namespace OSVROpenGL {
                 glDrawArrays(GL_TRIANGLES, 0, 36);
                 checkGlError("glDrawArrays");
 
-                // unbind the render target
-                glBindFramebuffer(GL_FRAMEBUFFER, gFrameBuffer);
-
                 // present this render target (deferred until the finish call below)
                 OSVR_ViewportDescription normalizedViewport = {0};
-                normalizedViewport.left = 0.0f;
+                normalizedViewport.left = renderInfoCount == 0 ? 0.0f : 0.5f;
                 normalizedViewport.lower = 0.0f;
-                normalizedViewport.width = 1.0f;
+                normalizedViewport.width = 0.5f;
                 normalizedViewport.height = 1.0f;
                 OSVR_RenderBufferOpenGL buffer = {0};
                 buffer.colorBufferName = renderTargetInfo.colorBufferName;
@@ -1161,6 +1278,11 @@ namespace OSVROpenGL {
                         presentState, buffer, currentRenderInfo, normalizedViewport);
                 checkReturnCode(rc, "osvrRenderManagerPresentRenderBufferOpenGL call failed.");
             }
+
+            // unbind the render target
+            glBindFramebuffer(GL_FRAMEBUFFER, gFrameBuffer);
+
+            glFlush();
 
             // actually kick off the present
             rc = osvrRenderManagerFinishPresentRenderBuffers(
@@ -1184,7 +1306,7 @@ namespace OSVROpenGL {
             gClientContext = nullptr;
         }
 
-        osvrClientReleaseAutoStartedServer();
+        //osvrClientReleaseAutoStartedServer();
     }
 }
 
@@ -1197,12 +1319,20 @@ extern "C" {
 
 JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_initGraphics(JNIEnv * env, jobject obj,  jint width, jint height)
 {
-    OSVROpenGL::setupGraphics(width, height);
+    static bool sInitialized = false;
+    if(!sInitialized) {
+        sInitialized = true;
+        OSVROpenGL::setupGraphics(width, height);
+    }
 }
 
 JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_initOSVR(JNIEnv *env, jobject obj)
 {
-    OSVROpenGL::setupOSVR();
+    static bool sOSVRInitialized = false;
+    if(!sOSVRInitialized) {
+        sOSVRInitialized = true;
+        OSVROpenGL::setupOSVR();
+    }
 }
 
 JNIEXPORT void JNICALL Java_com_osvr_android_gles2sample_MainActivityJNILib_step(JNIEnv * env, jobject obj)

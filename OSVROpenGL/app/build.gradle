@@ -128,14 +128,14 @@ model {
 
         defaultConfig {
             applicationId = 'com.osvr.android.gles2sample'
-            minSdkVersion.apiLevel = 22
+            minSdkVersion.apiLevel = 24
             targetSdkVersion.apiLevel = 25
             versionCode = 1
             versionName = '1.0'
         }
 
         ndk {
-            platformVersion = 22
+            platformVersion = 24
             moduleName = 'native-activity'
             toolchain = 'gcc'
             toolchainVersion = '4.9'
